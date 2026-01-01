@@ -14,7 +14,7 @@ import {
   isAnchorRecommendedForBottom,
   ANCHOR_TYPE_INFO,
 } from '../utils/anchorType';
-import {getAnchorIcon} from '../utils/anchorIcons';
+import {getAnchorIconDetailed} from '../utils/anchorIcons';
 import {BOTTOM_TYPE_INFO} from '../utils/bottomType';
 
 interface AnchorTypeModalProps {
@@ -87,7 +87,7 @@ export const AnchorTypeModal: React.FC<AnchorTypeModalProps> = ({
                     onPress={() => handleSelect(type)}>
                     <View style={styles.anchorIconContainer}>
                       <Text style={styles.anchorIcon}>
-                        {getAnchorIcon(type)}
+                        {getAnchorIconDetailed(type)}
                       </Text>
                     </View>
                     <Text

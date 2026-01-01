@@ -27,6 +27,12 @@ export function getAnchorIcon(type: AnchorType): string {
     [AnchorType.AC14]: '⚓', // Modern high-holding
     [AnchorType.SPADE]: '⚓', // Spade anchor
     [AnchorType.COBRA]: '⚓', // Cobra anchor
+    [AnchorType.HERRESHOFF]: '⚓', // Herreshoff
+    [AnchorType.NORTHILL]: '⚓', // Northill
+    [AnchorType.ULTRA]: '⚓', // Ultra
+    [AnchorType.EXCEL]: '⚓', // Excel
+    [AnchorType.VULCAN]: '⚓', // Vulcan
+    [AnchorType.SUPREME]: '⚓', // Supreme
     [AnchorType.STOCKLESS]: '⚓', // Stockless
     [AnchorType.NAVY_STOCKLESS]: '⚓', // Navy stockless
     [AnchorType.KEDGE]: '⚓', // Traditional stock
@@ -53,6 +59,12 @@ export function getAnchorIconDetailed(type: AnchorType): string {
     [AnchorType.AC14]: '🔷', // Modern - blue diamond
     [AnchorType.SPADE]: '♠️', // Spade - spade suit
     [AnchorType.COBRA]: '🐍', // Cobra - snake
+    [AnchorType.HERRESHOFF]: '⛴️', // Herreshoff - ship
+    [AnchorType.NORTHILL]: '🔧', // Northill - wrench
+    [AnchorType.ULTRA]: '✨', // Ultra - sparkles
+    [AnchorType.EXCEL]: '📊', // Excel - chart
+    [AnchorType.VULCAN]: '🔥', // Vulcan - fire
+    [AnchorType.SUPREME]: '👑', // Supreme - crown
     [AnchorType.STOCKLESS]: '⚙️', // Stockless - gear
     [AnchorType.NAVY_STOCKLESS]: '🛡️', // Navy - shield
     [AnchorType.KEDGE]: '⚓', // Traditional - anchor

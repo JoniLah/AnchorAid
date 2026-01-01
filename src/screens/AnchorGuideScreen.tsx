@@ -149,31 +149,77 @@ export const AnchorGuideScreen: React.FC = () => {
                       </View>
                       <Text style={styles.anchorDescription}>{info.description}</Text>
                       
-                      {isSelected && (
+                      {isSelected && info.detailedInfo && (
                         <View style={styles.anchorDetails}>
-                          <Text style={styles.detailsTitle}>Suitability by Bottom Type:</Text>
-                          <View style={styles.suitabilityGrid}>
-                            {Object.values(BottomType)
-                              .filter(bt => bt !== BottomType.UNKNOWN)
-                              .map(bottomType => {
-                                const suitability = getSuitabilityForBottom(anchorType, bottomType);
-                                return (
-                                  <View key={bottomType} style={styles.suitabilityItem}>
-                                    <Text style={styles.suitabilityBottom}>
-                                      {BOTTOM_TYPE_INFO[bottomType].name}:
-                                    </Text>
-                                    <Text
-                                      style={[
-                                        styles.suitabilityRating,
-                                        suitability === 'Excellent' && styles.suitabilityExcellent,
-                                        suitability === 'Good' && styles.suitabilityGood,
-                                        suitability === 'Fair' && styles.suitabilityFair,
-                                      ]}>
-                                      {suitability}
-                                    </Text>
-                                  </View>
-                                );
-                              })}
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Price Range:</Text>
+                            <Text style={styles.priceRange}>
+                              {info.detailedInfo.priceRange === 'budget' && '💰 Budget - Affordable'}
+                              {info.detailedInfo.priceRange === 'moderate' && '💵 Moderate - Mid-range pricing'}
+                              {info.detailedInfo.priceRange === 'premium' && '💎 Premium - Higher cost, excellent performance'}
+                              {info.detailedInfo.priceRange === 'very-premium' && '👑 Very Premium - Expensive, commercial grade'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Best For:</Text>
+                            {info.detailedInfo.bestFor.map((use, idx) => (
+                              <Text key={idx} style={styles.bestForItem}>• {use}</Text>
+                            ))}
+                          </View>
+
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Pros:</Text>
+                            {info.detailedInfo.pros.map((pro, idx) => (
+                              <Text key={idx} style={styles.proItem}>✓ {pro}</Text>
+                            ))}
+                          </View>
+
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Cons:</Text>
+                            {info.detailedInfo.cons.map((con, idx) => (
+                              <Text key={idx} style={styles.conItem}>✗ {con}</Text>
+                            ))}
+                          </View>
+
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Characteristics:</Text>
+                            <Text style={styles.characteristicItem}>
+                              Weight: {info.detailedInfo.weight}
+                            </Text>
+                            <Text style={styles.characteristicItem}>
+                              Setting: {info.detailedInfo.setting}
+                            </Text>
+                            <Text style={styles.characteristicItem}>
+                              Holding: {info.detailedInfo.holding}
+                            </Text>
+                          </View>
+
+                          <View style={styles.detailSection}>
+                            <Text style={styles.detailsTitle}>Suitability by Bottom Type:</Text>
+                            <View style={styles.suitabilityGrid}>
+                              {Object.values(BottomType)
+                                .filter(bt => bt !== BottomType.UNKNOWN)
+                                .map(bottomType => {
+                                  const suitability = getSuitabilityForBottom(anchorType, bottomType);
+                                  return (
+                                    <View key={bottomType} style={styles.suitabilityItem}>
+                                      <Text style={styles.suitabilityBottom}>
+                                        {BOTTOM_TYPE_INFO[bottomType].name}:
+                                      </Text>
+                                      <Text
+                                        style={[
+                                          styles.suitabilityRating,
+                                          suitability === 'Excellent' && styles.suitabilityExcellent,
+                                          suitability === 'Good' && styles.suitabilityGood,
+                                          suitability === 'Fair' && styles.suitabilityFair,
+                                        ]}>
+                                        {suitability}
+                                      </Text>
+                                    </View>
+                                  );
+                                })}
+                            </View>
                           </View>
                         </View>
                       )}
@@ -466,6 +512,39 @@ const styles = StyleSheet.create({
   },
   suitabilityFair: {
     color: '#ffc107',
+  },
+  detailSection: {
+    marginBottom: 16,
+  },
+  priceRange: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+    marginTop: 4,
+  },
+  bestForItem: {
+    fontSize: 13,
+    color: '#333',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  proItem: {
+    fontSize: 13,
+    color: '#28a745',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  conItem: {
+    fontSize: 13,
+    color: '#dc3545',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  characteristicItem: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+    lineHeight: 20,
   },
   tipBox: {
     backgroundColor: '#f8f9fa',
