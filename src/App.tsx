@@ -6,6 +6,7 @@ import {HomeScreen} from './screens/HomeScreen';
 import {AnchoringSessionScreen} from './screens/AnchoringSessionScreen';
 import {SettingsScreen} from './screens/SettingsScreen';
 import {PrivacyPolicyScreen} from './screens/PrivacyPolicyScreen';
+import {AnchorGuideScreen} from './screens/AnchorGuideScreen';
 import {loadSettings} from './services/storage';
 import {setLanguage} from './i18n';
 // Import to register background location task
@@ -16,6 +17,7 @@ export type RootStackParamList = {
   AnchoringSession: {sessionId?: string} | undefined;
   Settings: undefined;
   PrivacyPolicy: undefined;
+  AnchorGuide: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -63,6 +65,11 @@ const App: React.FC = () => {
           name="PrivacyPolicy"
           component={PrivacyPolicyScreen}
           options={{title: 'Privacy Policy'}}
+        />
+        <Stack.Screen
+          name="AnchorGuide"
+          component={AnchorGuideScreen}
+          options={{title: 'Anchor Guide'}}
         />
       </Stack.Navigator>
     </NavigationContainer>

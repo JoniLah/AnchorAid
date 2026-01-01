@@ -226,6 +226,15 @@ export const SettingsScreen: React.FC = () => {
 
       <View style={styles.section}>
         <Button
+          title="Anchor Type Guide"
+          onPress={() => navigation.navigate('AnchorGuide' as never)}
+          variant="secondary"
+          fullWidth
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Button
           title="Privacy Policy"
           onPress={() => navigation.navigate('PrivacyPolicy' as never)}
           variant="secondary"
