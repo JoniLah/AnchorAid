@@ -14,14 +14,14 @@ export const BOTTOM_TYPE_INFO: Record<BottomType, BottomTypeInfo> = {
     name: 'Sand',
     suitability: 'Excellent',
     holdingQuality: 'excellent',
-    notes: 'Generally excellent holding. Fluke anchors work well. Set anchor firmly.',
+    notes: 'Generally excellent holding. Fluke anchors (Danforth, Fortress) and modern anchors (Rocna, Mantus) work excellently. Set anchor firmly.',
   },
   [BottomType.MUD]: {
     type: BottomType.MUD,
     name: 'Mud',
     suitability: 'Good',
     holdingQuality: 'good',
-    notes: 'Good holding when anchor sets properly. May require more scope. Plow anchors often work well.',
+    notes: 'Good holding when anchor sets properly. May require more scope. Plow anchors (CQR, Delta) and modern anchors work well.',
   },
   [BottomType.CLAY]: {
     type: BottomType.CLAY,
@@ -35,7 +35,7 @@ export const BOTTOM_TYPE_INFO: Record<BottomType, BottomTypeInfo> = {
     name: 'Grass/Weeds',
     suitability: 'Fair',
     holdingQuality: 'fair',
-    notes: 'Holding can be variable. Anchor may not penetrate well. Consider plow or grapnel anchor. Increase scope.',
+    notes: 'Holding can be variable. Anchor may not penetrate well. Plow anchors (CQR, Delta), claw anchors (Bruce), or grapnel work better. Increase scope.',
   },
   [BottomType.ROCK]: {
     type: BottomType.ROCK,

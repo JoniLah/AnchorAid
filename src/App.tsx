@@ -5,13 +5,17 @@ import {StatusBar} from 'react-native';
 import {HomeScreen} from './screens/HomeScreen';
 import {AnchoringSessionScreen} from './screens/AnchoringSessionScreen';
 import {SettingsScreen} from './screens/SettingsScreen';
+import {PrivacyPolicyScreen} from './screens/PrivacyPolicyScreen';
 import {loadSettings} from './services/storage';
 import {setLanguage} from './i18n';
+// Import to register background location task
+import './services/backgroundLocation';
 
 export type RootStackParamList = {
   Home: undefined;
   AnchoringSession: {sessionId?: string} | undefined;
   Settings: undefined;
+  PrivacyPolicy: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -54,6 +58,11 @@ const App: React.FC = () => {
           name="Settings"
           component={SettingsScreen}
           options={{title: 'Settings'}}
+        />
+        <Stack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicyScreen}
+          options={{title: 'Privacy Policy'}}
         />
       </Stack.Navigator>
     </NavigationContainer>

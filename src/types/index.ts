@@ -19,6 +19,24 @@ export enum BottomType {
   UNKNOWN = 'unknown',
 }
 
+export enum AnchorType {
+  DANFORTH = 'danforth',
+  BRUCE = 'bruce',
+  PLOW = 'plow',
+  DELTA = 'delta',
+  ROCNA = 'rocna',
+  MANTUS = 'mantus',
+  FORTRESS = 'fortress',
+  AC14 = 'ac14',
+  SPADE = 'spade',
+  COBRA = 'cobra',
+  STOCKLESS = 'stockless',
+  NAVY_STOCKLESS = 'navy_stockless',
+  KEDGE = 'kedge',
+  GRAPNEL = 'grapnel',
+  OTHER = 'other',
+}
+
 export interface Location {
   latitude: number;
   longitude: number;
@@ -41,6 +59,7 @@ export interface AnchoringSession {
   gustSpeed?: number;
   windDirection?: number;
   bottomType?: BottomType;
+  anchorType?: AnchorType;
   recommendedRodeLength?: number;
   actualRodeDeployed?: number;
   boatLength?: number;
@@ -48,6 +67,14 @@ export interface AnchoringSession {
   anchorPoint?: Location;
   dragThreshold?: number;
   unitSystem: UnitSystem;
+  notes?: string;
+}
+
+export enum AlarmSoundType {
+  DEFAULT = 'default',
+  LOUD = 'loud',
+  PERSISTENT = 'persistent',
+  SIREN = 'siren',
 }
 
 export interface AppSettings {
@@ -57,6 +84,8 @@ export interface AppSettings {
   defaultUpdateInterval: number;
   defaultSmoothingWindow: number;
   language?: 'en' | 'fi' | 'sv';
+  alarmSoundType?: AlarmSoundType;
+  alarmVolume?: number; // 0.0 to 1.0
 }
 
 export interface AlarmState {

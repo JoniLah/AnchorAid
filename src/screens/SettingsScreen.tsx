@@ -6,7 +6,7 @@ import {Button} from '../components/Button';
 import {InputField} from '../components/InputField';
 import {SafetyDisclaimer} from '../components/SafetyDisclaimer';
 import {loadSettings, saveSettings} from '../services/storage';
-import {AppSettings, UnitSystem} from '../types';
+import {AppSettings, UnitSystem, AlarmSoundType} from '../types';
 import {setLanguage, t, Language} from '../i18n';
 
 export const SettingsScreen: React.FC = () => {
@@ -19,6 +19,8 @@ export const SettingsScreen: React.FC = () => {
     defaultUpdateInterval: 5,
     defaultSmoothingWindow: 5,
     language: 'en',
+    alarmSoundType: AlarmSoundType.DEFAULT,
+    alarmVolume: 1.0,
   });
 
   useEffect(() => {
@@ -173,7 +175,62 @@ export const SettingsScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Alarm Sound</Text>
+        
+        <Text style={styles.label}>Alarm Sound Type</Text>
+        <View style={styles.optionRow}>
+          {Object.values(AlarmSoundType).map(soundType => (
+            <TouchableOpacity
+              key={soundType}
+              style={[
+                styles.optionButton,
+                settings.alarmSoundType === soundType && styles.optionSelected,
+              ]}
+              onPress={() =>
+                setSettings(prev => ({...prev, alarmSoundType: soundType}))
+              }>
+              <Text
+                style={[
+                  styles.optionText,
+                  settings.alarmSoundType === soundType && styles.optionTextSelected,
+                ]}>
+                {soundType.charAt(0).toUpperCase() + soundType.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.hint}>
+          Default: Standard alert. Loud: Higher volume. Persistent: Looping alarm. Siren: Continuous alert.
+        </Text>
+
+        <InputField
+          label="Alarm Volume"
+          value={((settings.alarmVolume || 1.0) * 100).toFixed(0)}
+          onChangeText={text => {
+            const num = parseFloat(text);
+            if (!isNaN(num) && num >= 0 && num <= 100) {
+              setSettings(prev => ({...prev, alarmVolume: num / 100}));
+            }
+          }}
+          unit="%"
+          placeholder="100"
+        />
+        <Text style={styles.hint}>
+          Volume level for alarm sounds (0-100%)
+        </Text>
+      </View>
+
+      <View style={styles.section}>
         <Button title={t('saveSettings')} onPress={handleSave} fullWidth />
+      </View>
+
+      <View style={styles.section}>
+        <Button
+          title="Privacy Policy"
+          onPress={() => navigation.navigate('PrivacyPolicy' as never)}
+          variant="secondary"
+          fullWidth
+        />
       </View>
 
       <SafetyDisclaimer />
@@ -226,6 +283,13 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: -12,
     marginBottom: 12,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 8,
+    color: '#333',
   },
 });
 

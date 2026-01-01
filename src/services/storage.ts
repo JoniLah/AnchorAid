@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {AppSettings, AnchoringSession, UnitSystem} from '../types';
+import {AppSettings, AnchoringSession, UnitSystem, AlarmSoundType} from '../types';
 
 const SETTINGS_KEY = '@anchor_aid:settings';
 const SESSIONS_KEY = '@anchor_aid:sessions';
@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultUpdateInterval: 5,
   defaultSmoothingWindow: 5,
   language: 'en',
+  alarmSoundType: AlarmSoundType.DEFAULT,
+  alarmVolume: 1.0,
 };
 
 /**

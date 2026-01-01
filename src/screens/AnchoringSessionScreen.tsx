@@ -7,8 +7,10 @@ import {
   Alert,
   Vibration,
   Platform,
+  TextInput,
+  TouchableOpacity,
 } from 'react-native';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useNavigation, useRoute, useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {InputField} from '../components/InputField';
 import {Button} from '../components/Button';
@@ -17,6 +19,7 @@ import {
   UnitSystem,
   RodeType,
   BottomType,
+  AnchorType,
   AnchoringSession,
   AlarmState,
   Location,
@@ -29,9 +32,27 @@ import {
   watchPosition,
   clearWatch,
 } from '../services/location';
+import {
+  startBackgroundLocation,
+  stopBackgroundLocation,
+  checkBackgroundAlarm,
+} from '../services/backgroundLocation';
+import {
+  initializeAudio,
+  playAlarmSound,
+  stopAlarmSound,
+} from '../services/alarmSound';
 import {calculateScope, getRecommendedScopeRatio} from '../utils/scopeCalculator';
 import {calculateSwingRadius} from '../utils/swingCalculator';
 import {getBottomTypeInfo, BOTTOM_TYPE_INFO} from '../utils/bottomType';
+import {
+  getAnchorTypeInfo,
+  getRecommendedAnchorsForBottom,
+  isAnchorRecommendedForBottom,
+  ANCHOR_TYPE_INFO,
+} from '../utils/anchorType';
+import {getAnchorIconDetailed} from '../utils/anchorIcons';
+import {AnchorTypeModal} from '../components/AnchorTypeModal';
 import {
   shouldTriggerAlarm,
   smoothPosition,
@@ -57,8 +78,11 @@ export const AnchoringSessionScreen: React.FC = () => {
   const [windSpeed, setWindSpeed] = useState('');
   const [gustSpeed, setGustSpeed] = useState('');
   const [bottomType, setBottomType] = useState<BottomType>(BottomType.UNKNOWN);
+  const [anchorType, setAnchorType] = useState<AnchorType | undefined>(undefined);
+  const [anchorModalVisible, setAnchorModalVisible] = useState(false);
   const [actualRodeDeployed, setActualRodeDeployed] = useState('');
   const [boatLength, setBoatLength] = useState('');
+  const [notes, setNotes] = useState('');
 
   // Calculations
   const [calculationResult, setCalculationResult] = useState<any>(null);
@@ -78,7 +102,56 @@ export const AnchoringSessionScreen: React.FC = () => {
 
   useEffect(() => {
     loadInitialSettings();
+    initializeAudio();
+    
+    // Check for background alarms when component mounts
+    checkBackgroundAlarm().then(alarm => {
+      if (alarm && alarm.triggered) {
+        Alert.alert(
+          '⚠️ Anchor Drag Alarm',
+          `Boat has moved ${formatLength(
+            alarm.distance || 0,
+            unitSystem,
+          )} from anchor point (threshold: ${formatLength(
+            alarm.threshold || 0,
+            unitSystem,
+          )})`,
+        );
+        if (settings) {
+          playAlarmSound(
+            settings.alarmSoundType,
+            settings.alarmVolume || 1.0,
+          );
+        }
+      }
+    });
   }, []);
+
+  // Check for background alarms when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      checkBackgroundAlarm().then(alarm => {
+        if (alarm && alarm.triggered) {
+          Alert.alert(
+            '⚠️ Anchor Drag Alarm',
+            `Boat has moved ${formatLength(
+              alarm.distance || 0,
+              unitSystem,
+            )} from anchor point (threshold: ${formatLength(
+              alarm.threshold || 0,
+              unitSystem,
+            )})`,
+          );
+          if (settings) {
+            playAlarmSound(
+              settings.alarmSoundType,
+              settings.alarmVolume || 1.0,
+            );
+          }
+        }
+      });
+    }, [unitSystem, settings]),
+  );
 
   useEffect(() => {
     if (alarmState.isActive && watchIdRef.current === null) {
@@ -273,6 +346,22 @@ export const AnchoringSessionScreen: React.FC = () => {
 
     setPositionHistory([]);
 
+    // Start background location tracking
+    const backgroundStarted = await startBackgroundLocation(
+      alarmState.anchorPoint,
+      alarmState.dragThreshold,
+      alarmState.updateInterval,
+      alarmState.smoothingWindow,
+    );
+
+    if (backgroundStarted) {
+      Alert.alert(
+        'Background Alarm Active',
+        'Alarm will continue monitoring even when app is in background.',
+      );
+    }
+
+    // Also start foreground tracking for immediate updates
     const watchId = watchPosition(
       position => {
         setPositionHistory(prev => {
@@ -291,11 +380,18 @@ export const AnchoringSessionScreen: React.FC = () => {
     watchIdRef.current = watchId;
   };
 
-  const stopAlarm = () => {
+  const stopAlarm = async () => {
     if (watchIdRef.current !== null) {
       clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    
+    // Stop background location
+    await stopBackgroundLocation();
+    
+    // Stop alarm sound
+    await stopAlarmSound();
+    
     setAlarmState(prev => ({
       ...prev,
       isAlarmTriggered: false,
@@ -334,12 +430,19 @@ export const AnchoringSessionScreen: React.FC = () => {
 
       // If alarm just triggered, sound and vibrate
       if (!wasTriggered && nowTriggered) {
-        if (Platform.OS === 'ios') {
-          // iOS vibration
-          Vibration.vibrate([0, 500, 100, 500]);
+        // Play alarm sound based on settings
+        if (settings) {
+          playAlarmSound(
+            settings.alarmSoundType,
+            settings.alarmVolume || 1.0,
+          );
         } else {
-          // Android vibration pattern
-          Vibration.vibrate([0, 500, 100, 500], true);
+          // Fallback to vibration
+          if (Platform.OS === 'ios') {
+            Vibration.vibrate([0, 500, 100, 500]);
+          } else {
+            Vibration.vibrate([0, 500, 100, 500], true);
+          }
         }
 
         Alert.alert(
@@ -390,6 +493,7 @@ export const AnchoringSessionScreen: React.FC = () => {
       windSpeed: windSpeed ? parseFloat(windSpeed) : undefined,
       gustSpeed: gustSpeed ? parseFloat(gustSpeed) : undefined,
       bottomType,
+      anchorType,
       recommendedRodeLength: calculationResult.recommendedRodeLength,
       actualRodeDeployed: actualRodeDeployed
         ? parseFloat(actualRodeDeployed)
@@ -399,6 +503,7 @@ export const AnchoringSessionScreen: React.FC = () => {
       anchorPoint: alarmState.anchorPoint,
       dragThreshold: alarmState.dragThreshold,
       unitSystem,
+      notes: notes || undefined,
     };
 
     await saveSession(session);
@@ -529,6 +634,52 @@ export const AnchoringSessionScreen: React.FC = () => {
             <Text style={styles.bottomTypeNotes}>{bottomTypeInfo.notes}</Text>
           </View>
         </View>
+
+        <View style={styles.pickerContainer}>
+          <Text style={styles.label}>Anchor Type (Optional)</Text>
+          <Text style={styles.hint}>
+            Tap to select your anchor type. Recommendations shown based on bottom type.
+          </Text>
+          
+          <TouchableOpacity
+            style={[
+              styles.anchorSelectorButton,
+              anchorType && styles.anchorSelectorButtonSelected,
+            ]}
+            onPress={() => setAnchorModalVisible(true)}>
+            {anchorType ? (
+              <View style={styles.anchorSelectorContent}>
+                <Text style={styles.anchorSelectorIcon}>
+                  {getAnchorIconDetailed(anchorType)}
+                </Text>
+                <Text style={styles.anchorSelectorText}>
+                  {getAnchorTypeInfo(anchorType).name}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.anchorSelectorPlaceholder}>
+                Tap to select anchor type
+              </Text>
+            )}
+            <Text style={styles.anchorSelectorArrow}>›</Text>
+          </TouchableOpacity>
+
+          {anchorType && (
+            <View style={styles.anchorTypeInfo}>
+              <Text style={styles.anchorTypeDescription}>
+                {getAnchorTypeInfo(anchorType).description}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <AnchorTypeModal
+          visible={anchorModalVisible}
+          onClose={() => setAnchorModalVisible(false)}
+          selectedType={anchorType}
+          onSelect={setAnchorType}
+          bottomType={bottomType}
+        />
 
         <Button title="Calculate" onPress={handleCalculate} fullWidth />
       </View>
@@ -673,6 +824,23 @@ export const AnchoringSessionScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Step 4: Session Notes</Text>
+        <Text style={styles.label}>Notes (optional)</Text>
+        <TextInput
+          style={styles.notesInput}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Record conditions, anchor type used, issues encountered..."
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
+        <Text style={styles.hint}>
+          Useful for learning and troubleshooting
+        </Text>
+      </View>
+
+      <View style={styles.section}>
         <Button
           title="Save Session"
           onPress={handleSaveSession}
@@ -743,6 +911,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
   },
+  recommendationBox: {
+    backgroundColor: '#e7f3ff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  recommendationTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#004085',
+    marginBottom: 4,
+  },
+  recommendationText: {
+    fontSize: 12,
+    color: '#004085',
+  },
+  anchorTypeInfo: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  anchorTypeDescription: {
+    fontSize: 12,
+    color: '#666',
+  },
+  anchorSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  anchorSelectorButtonSelected: {
+    borderColor: '#007AFF',
+    backgroundColor: '#e7f3ff',
+  },
+  anchorSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  anchorSelectorIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  anchorSelectorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  anchorSelectorPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+    flex: 1,
+  },
+  anchorSelectorArrow: {
+    fontSize: 24,
+    color: '#666',
+  },
   resultBox: {
     backgroundColor: '#f0f0f0',
     padding: 16,
@@ -804,6 +1037,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#721c24',
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 100,
+    backgroundColor: '#fff',
+    color: '#333',
   },
 });
 
