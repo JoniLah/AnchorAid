@@ -1,5 +1,6 @@
 import React from 'react';
 import {View, Text, TextInput, StyleSheet} from 'react-native';
+import {Tooltip} from './Tooltip';
 
 interface InputFieldProps {
   label: string;
@@ -9,6 +10,7 @@ interface InputFieldProps {
   placeholder?: string;
   keyboardType?: 'default' | 'numeric' | 'decimal-pad';
   error?: string;
+  tooltip?: string;
 }
 
 export const InputField: React.FC<InputFieldProps> = ({
@@ -19,10 +21,14 @@ export const InputField: React.FC<InputFieldProps> = ({
   placeholder,
   keyboardType = 'numeric',
   error,
+  tooltip,
 }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>{label}</Text>
+        {tooltip && <Tooltip content={tooltip} />}
+      </View>
       <View style={styles.inputContainer}>
         <TextInput
           style={[styles.input, error && styles.inputError]}
@@ -42,10 +48,14 @@ const styles = StyleSheet.create({
   container: {
     marginBottom: 16,
   },
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 6,
     color: '#333',
   },
   inputContainer: {

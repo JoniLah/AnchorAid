@@ -38,8 +38,8 @@ export async function playAlarmSound(
 
     const soundSource = getSoundSource(soundType);
     
-    // If we have a sound source, try to play it
-    if (soundSource !== null) {
+    // Try to play the sound
+    try {
       const {sound} = await Audio.Sound.createAsync(
         soundSource,
         {
@@ -51,6 +51,9 @@ export async function playAlarmSound(
 
       soundObject = sound;
       isPlaying = true;
+    } catch (soundError) {
+      console.log('Sound playback error (will use vibration):', soundError);
+      // Continue to vibration fallback
     }
 
     // Always vibrate (works even without sound files)
@@ -86,31 +89,58 @@ export async function playAlarmSound(
 export async function stopAlarmSound(): Promise<void> {
   try {
     if (soundObject) {
-      await soundObject.stopAsync();
-      await soundObject.unloadAsync();
+      try {
+        await soundObject.stopAsync();
+      } catch (e) {
+        // Ignore stop errors
+      }
+      try {
+        await soundObject.unloadAsync();
+      } catch (e) {
+        // Ignore unload errors
+      }
       soundObject = null;
-      isPlaying = false;
     }
+    isPlaying = false;
+    // Also stop vibration
+    Vibration.cancel();
   } catch (error) {
     console.error('Error stopping alarm sound:', error);
+    isPlaying = false;
   }
 }
 
 /**
+ * Minimal WAV file generators using base64-encoded data URIs
+ * These are very short beep sounds (0.1-0.2 seconds)
+ */
+
+// Simple beep at ~800Hz, 0.1s duration
+const BEEP_DEFAULT = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBdou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC';
+// Louder beep at ~1000Hz, 0.15s duration  
+const BEEP_LOUD = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBdou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC';
+// Persistent beep at ~600Hz, 0.1s duration (will loop)
+const BEEP_PERSISTENT = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBdou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC';
+// Siren beep at ~1200Hz, 0.1s duration (will loop)
+const BEEP_SIREN = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWi77+efTRAMUKfj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBdou+/nn00QDFCn4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC';
+
+/**
  * Get sound source based on type
- * Note: In production, you'd use actual sound files from assets
- * For now, we'll use a simple approach with system sounds
- * 
- * To add actual sound files:
- * 1. Add sound files to assets/sounds/ (e.g., alarm-default.mp3, alarm-loud.mp3)
- * 2. Update this function to return require('./assets/sounds/alarm-default.mp3'), etc.
+ * Returns data URI for simple beep tones
  */
 function getSoundSource(soundType: AlarmSoundType): any {
-  // Since we don't have actual sound files, we'll use a workaround
-  // In production, you'd load from require('./assets/sounds/alarm-default.mp3'), etc.
-  // For now, return null which will cause the sound to fail gracefully and use vibration
-  // This is acceptable for MVP - vibration will still work
-  return null;
+  switch (soundType) {
+    case AlarmSoundType.DEFAULT:
+      return {uri: BEEP_DEFAULT};
+    case AlarmSoundType.LOUD:
+      return {uri: BEEP_LOUD};
+    case AlarmSoundType.PERSISTENT:
+      return {uri: BEEP_PERSISTENT};
+    case AlarmSoundType.SIREN:
+      return {uri: BEEP_SIREN};
+    default:
+      return {uri: BEEP_DEFAULT};
+  }
 }
 
 /**

@@ -17,6 +17,7 @@ import {
 import {getAnchorIconDetailed} from '../utils/anchorIcons';
 import {BOTTOM_TYPE_INFO} from '../utils/bottomType';
 import {Button} from '../components/Button';
+import {t} from '../i18n';
 
 export const AnchorGuideScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -27,20 +28,20 @@ export const AnchorGuideScreen: React.FC = () => {
   const getSuitabilityForBottom = (anchorType: AnchorType, bottomType: BottomType): string => {
     const recommended = getRecommendedAnchorsForBottom(bottomType);
     if (recommended.includes(anchorType)) {
-      return 'Excellent';
+      return t('excellent');
     }
     // Check if it's a reasonable alternative
     const info = getAnchorTypeInfo(anchorType);
     if (info.category === 'fluke' && (bottomType === BottomType.SAND || bottomType === BottomType.MUD)) {
-      return 'Good';
+      return t('good');
     }
     if (info.category === 'plow' && (bottomType === BottomType.MUD || bottomType === BottomType.CLAY)) {
-      return 'Good';
+      return t('good');
     }
     if (info.category === 'claw' && bottomType === BottomType.ROCK) {
-      return 'Good';
+      return t('good');
     }
-    return 'Fair';
+    return t('fair');
   };
 
   return (
@@ -48,17 +49,17 @@ export const AnchorGuideScreen: React.FC = () => {
       style={styles.container}
       contentContainerStyle={{paddingBottom: insets.bottom + 16}}>
       <View style={styles.section}>
-        <Text style={styles.title}>Anchor Type Guide</Text>
+        <Text style={styles.title}>{t('anchorTypeGuide')}</Text>
         <Text style={styles.subtitle}>
-          Learn about different anchor types and their best uses
+          {t('learnAboutAnchors')}
         </Text>
       </View>
 
       {/* Quick Reference by Bottom Type */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Reference by Bottom Type</Text>
+        <Text style={styles.sectionTitle}>{t('quickReferenceByBottom')}</Text>
         <Text style={styles.sectionDescription}>
-          Tap a bottom type to see recommended anchors
+          {t('tapBottomTypeToSee')}
         </Text>
         
         <View style={styles.bottomTypeGrid}>
@@ -83,7 +84,7 @@ export const AnchorGuideScreen: React.FC = () => {
         {selectedBottom && (
           <View style={styles.recommendationBox}>
             <Text style={styles.recommendationTitle}>
-              Best Anchors for {BOTTOM_TYPE_INFO[selectedBottom].name}
+              {t('bestAnchorsFor')} {BOTTOM_TYPE_INFO[selectedBottom].name}
             </Text>
             <View style={styles.recommendedAnchorsList}>
               {getRecommendedAnchorsForBottom(selectedBottom).map((anchorType, index) => {
@@ -111,7 +112,7 @@ export const AnchorGuideScreen: React.FC = () => {
 
       {/* Anchor Types by Category */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Anchor Types by Category</Text>
+        <Text style={styles.sectionTitle}>{t('anchorTypesByCategory')}</Text>
         
         {['fluke', 'plow', 'claw', 'modern', 'traditional', 'other'].map(category => {
           const anchorsInCategory = Object.values(AnchorType).filter(
@@ -123,7 +124,12 @@ export const AnchorGuideScreen: React.FC = () => {
           return (
             <View key={category} style={styles.categorySection}>
               <Text style={styles.categoryTitle}>
-                {category.charAt(0).toUpperCase() + category.slice(1)} Anchors
+                {category === 'fluke' ? t('flukeAnchors') :
+                 category === 'plow' ? t('plowAnchors') :
+                 category === 'claw' ? t('clawAnchors') :
+                 category === 'modern' ? t('modernAnchors') :
+                 category === 'traditional' ? t('traditionalAnchors') :
+                 t('otherAnchors')}
               </Text>
               <View style={styles.anchorList}>
                 {anchorsInCategory.map(anchorType => {
@@ -152,51 +158,51 @@ export const AnchorGuideScreen: React.FC = () => {
                       {isSelected && info.detailedInfo && (
                         <View style={styles.anchorDetails}>
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Price Range:</Text>
+                            <Text style={styles.detailsTitle}>{t('priceRange')}</Text>
                             <Text style={styles.priceRange}>
-                              {info.detailedInfo.priceRange === 'budget' && '💰 Budget - Affordable'}
-                              {info.detailedInfo.priceRange === 'moderate' && '💵 Moderate - Mid-range pricing'}
-                              {info.detailedInfo.priceRange === 'premium' && '💎 Premium - Higher cost, excellent performance'}
-                              {info.detailedInfo.priceRange === 'very-premium' && '👑 Very Premium - Expensive, commercial grade'}
+                              {info.detailedInfo.priceRange === 'budget' && t('budgetAffordable')}
+                              {info.detailedInfo.priceRange === 'moderate' && t('moderateMidRange')}
+                              {info.detailedInfo.priceRange === 'premium' && t('premiumHigherCost')}
+                              {info.detailedInfo.priceRange === 'very-premium' && t('veryPremiumExpensive')}
                             </Text>
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Best For:</Text>
+                            <Text style={styles.detailsTitle}>{t('bestFor')}</Text>
                             {info.detailedInfo.bestFor.map((use, idx) => (
                               <Text key={idx} style={styles.bestForItem}>• {use}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Pros:</Text>
+                            <Text style={styles.detailsTitle}>{t('pros')}</Text>
                             {info.detailedInfo.pros.map((pro, idx) => (
                               <Text key={idx} style={styles.proItem}>✓ {pro}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Cons:</Text>
+                            <Text style={styles.detailsTitle}>{t('cons')}</Text>
                             {info.detailedInfo.cons.map((con, idx) => (
                               <Text key={idx} style={styles.conItem}>✗ {con}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Characteristics:</Text>
+                            <Text style={styles.detailsTitle}>{t('characteristics')}</Text>
                             <Text style={styles.characteristicItem}>
-                              Weight: {info.detailedInfo.weight}
+                              {t('weight')} {info.detailedInfo.weight}
                             </Text>
                             <Text style={styles.characteristicItem}>
-                              Setting: {info.detailedInfo.setting}
+                              {t('setting')} {info.detailedInfo.setting}
                             </Text>
                             <Text style={styles.characteristicItem}>
-                              Holding: {info.detailedInfo.holding}
+                              {t('holding')} {info.detailedInfo.holding}
                             </Text>
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>Suitability by Bottom Type:</Text>
+                            <Text style={styles.detailsTitle}>{t('suitabilityByBottomType')}</Text>
                             <View style={styles.suitabilityGrid}>
                               {Object.values(BottomType)
                                 .filter(bt => bt !== BottomType.UNKNOWN)
@@ -210,9 +216,9 @@ export const AnchorGuideScreen: React.FC = () => {
                                       <Text
                                         style={[
                                           styles.suitabilityRating,
-                                          suitability === 'Excellent' && styles.suitabilityExcellent,
-                                          suitability === 'Good' && styles.suitabilityGood,
-                                          suitability === 'Fair' && styles.suitabilityFair,
+                                          suitability === t('excellent') && styles.suitabilityExcellent,
+                                          suitability === t('good') && styles.suitabilityGood,
+                                          suitability === t('fair') && styles.suitabilityFair,
                                         ]}>
                                         {suitability}
                                       </Text>
@@ -234,68 +240,55 @@ export const AnchorGuideScreen: React.FC = () => {
 
       {/* General Anchoring Tips */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>General Anchoring Tips</Text>
+        <Text style={styles.sectionTitle}>{t('generalAnchoringTips')}</Text>
         
         <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>1. Scope Ratio</Text>
+          <Text style={styles.tipTitle}>1. {t('scopeRatioTip')}</Text>
           <Text style={styles.tipText}>
-            Use appropriate scope (rode length to depth ratio):
-            • Calm conditions: 3:1 minimum
-            • Normal conditions: 5:1 recommended
-            • Windy conditions: 7:1 or more
-            • Storm conditions: 10:1 or more
+            {t('scopeRatioTipText')}
           </Text>
         </View>
 
         <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>2. Setting the Anchor</Text>
+          <Text style={styles.tipTitle}>2. {t('settingTheAnchor')}</Text>
           <Text style={styles.tipText}>
-            • Lower anchor slowly, don't drop it
-            • Back down gently to set the anchor
-            • Use reverse power to test the set
-            • Watch for anchor drag during setting
-            • Mark your position and monitor
+            {t('settingTheAnchorText')}
           </Text>
         </View>
 
         <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>3. Bottom Type Considerations</Text>
+          <Text style={styles.tipTitle}>3. {t('bottomTypeConsiderations')}</Text>
           <Text style={styles.tipText}>
-            • Sand: Excellent holding, most anchors work well
-            • Mud: Good holding, may need more scope
-            • Clay: Good holding once set, harder to set initially
-            • Grass/Weeds: Variable, anchor may not penetrate
-            • Rock: Poor holding, risk of fouling
-            • Coral: Poor holding, risk of damage to anchor and reef
+            {t('bottomTypeConsiderationsText')}
           </Text>
         </View>
 
         <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>4. Anchor Selection</Text>
+          <Text style={styles.tipTitle}>4. {t('anchorSelection')}</Text>
           <Text style={styles.tipText}>
-            • Choose anchor based on your primary cruising grounds
-            • Consider carrying a secondary anchor for different conditions
-            • Modern anchors (Rocna, Mantus) offer excellent all-around performance
-            • Fluke anchors (Danforth, Fortress) excel in sand and mud
-            • Claw anchors (Bruce) work well in rocky bottoms
+            {t('anchorSelectionText')}
           </Text>
         </View>
 
         <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>5. Safety</Text>
+          <Text style={styles.tipTitle}>5. {t('safetyTips')}</Text>
           <Text style={styles.tipText}>
-            • Always maintain proper watch
-            • Use anchor alarm to monitor position
-            • Check weather forecasts before anchoring
-            • Have an escape plan if conditions deteriorate
-            • Never rely solely on technology - use your judgment
+            {t('safetyTipsText')}
           </Text>
         </View>
       </View>
 
       <View style={styles.section}>
         <Button
-          title="Back"
+          title={t('howToAnchorStepByStep')}
+          onPress={() => (navigation as any).navigate('AnchoringTechnique')}
+          fullWidth
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Button
+          title={t('back')}
           onPress={() => navigation.goBack()}
           variant="secondary"
           fullWidth

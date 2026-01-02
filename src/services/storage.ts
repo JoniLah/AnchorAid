@@ -3,7 +3,7 @@ import {AppSettings, AnchoringSession, UnitSystem, AlarmSoundType} from '../type
 
 const SETTINGS_KEY = '@anchor_aid:settings';
 const SESSIONS_KEY = '@anchor_aid:sessions';
-const MAX_SESSIONS = 10;
+const MAX_SESSIONS = 100; // Increased to allow more history
 
 const DEFAULT_SETTINGS: AppSettings = {
   unitSystem: UnitSystem.METRIC,

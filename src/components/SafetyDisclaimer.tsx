@@ -1,16 +1,13 @@
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
+import {t} from '../i18n';
 
 export const SafetyDisclaimer: React.FC = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>⚠️ Safety Disclaimer</Text>
+      <Text style={styles.title}>⚠️ {t('safetyDisclaimer')}</Text>
       <Text style={styles.text}>
-        This app provides guidance only and does not replace nautical charts,
-        seamanship, or official safety equipment. Always use proper navigation
-        tools, monitor conditions, and exercise sound judgment. The developer
-        assumes no liability for any consequences resulting from use of this
-        app.
+        {t('safetyDisclaimerText')}
       </Text>
     </View>
   );

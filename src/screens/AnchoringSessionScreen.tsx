@@ -42,6 +42,10 @@ import {
   playAlarmSound,
   stopAlarmSound,
 } from '../services/alarmSound';
+import {
+  clearLockScreenNotification,
+  updateLockScreenNotification,
+} from '../services/lockScreenNotification';
 import {calculateScope, getRecommendedScopeRatio} from '../utils/scopeCalculator';
 import {calculateSwingRadius} from '../utils/swingCalculator';
 import {getBottomTypeInfo, BOTTOM_TYPE_INFO} from '../utils/bottomType';
@@ -54,11 +58,16 @@ import {
 import {getAnchorIconDetailed} from '../utils/anchorIcons';
 import {AnchorTypeModal} from '../components/AnchorTypeModal';
 import {
+  predictBottomType,
+  saveBottomTypeObservation,
+} from '../services/bottomTypePrediction';
+import {
   shouldTriggerAlarm,
   smoothPosition,
   checkGpsAccuracy,
 } from '../utils/alarmLogic';
 import {formatLength, getLengthUnit, convertLength} from '../utils/units';
+import {t} from '../i18n';
 
 export const AnchoringSessionScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -99,45 +108,26 @@ export const AnchoringSessionScreen: React.FC = () => {
   });
   const [positionHistory, setPositionHistory] = useState<Location[]>([]);
   const watchIdRef = useRef<number | null>(null);
+  const [anchorStartTime, setAnchorStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
     loadInitialSettings();
     initializeAudio();
-    
-    // Check for background alarms when component mounts
-    checkBackgroundAlarm().then(alarm => {
-      if (alarm && alarm.triggered) {
-        Alert.alert(
-          '⚠️ Anchor Drag Alarm',
-          `Boat has moved ${formatLength(
-            alarm.distance || 0,
-            unitSystem,
-          )} from anchor point (threshold: ${formatLength(
-            alarm.threshold || 0,
-            unitSystem,
-          )})`,
-        );
-        if (settings) {
-          playAlarmSound(
-            settings.alarmSoundType,
-            settings.alarmVolume || 1.0,
-          );
-        }
-      }
-    });
   }, []);
 
   // Check for background alarms when screen comes into focus
+  // checkBackgroundAlarm() clears the alarm after reading, so it can only trigger once
   useFocusEffect(
     React.useCallback(() => {
       checkBackgroundAlarm().then(alarm => {
         if (alarm && alarm.triggered) {
           Alert.alert(
-            '⚠️ Anchor Drag Alarm',
-            `Boat has moved ${formatLength(
+            `⚠️ ${t('anchorDragAlarm')}`,
+            `${t('boatMoved')} ${formatLength(
               alarm.distance || 0,
               unitSystem,
-            )} from anchor point (threshold: ${formatLength(
+            )} ${t('fromAnchorPoint')} (${t('threshold')}: ${formatLength(
               alarm.threshold || 0,
               unitSystem,
             )})`,
@@ -161,6 +151,20 @@ export const AnchoringSessionScreen: React.FC = () => {
     }
   }, [alarmState.isActive]);
 
+  // Timer effect - update elapsed time every second
+  useEffect(() => {
+    if (!anchorStartTime) {
+      setElapsedTime(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - anchorStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [anchorStartTime]);
+
   const loadInitialSettings = async () => {
     const loaded = await loadSettings();
     setSettings(loaded);
@@ -180,7 +184,7 @@ export const AnchoringSessionScreen: React.FC = () => {
     const scopeRatioNum = parseFloat(scopeRatio);
 
     if (!depthNum || !bowHeightNum || !scopeRatioNum) {
-      Alert.alert('Error', 'Please enter depth, bow height, and scope ratio');
+      Alert.alert(t('error'), `${t('pleaseEnter')} depth, bow height, and scope ratio`);
       return;
     }
 
@@ -289,7 +293,7 @@ export const AnchoringSessionScreen: React.FC = () => {
 
   const handleGetWindRecommendation = () => {
     if (!windSpeed) {
-      Alert.alert('Error', 'Please enter wind speed');
+      Alert.alert(t('error'), `${t('pleaseEnter')} wind speed`);
       return;
     }
 
@@ -319,27 +323,52 @@ export const AnchoringSessionScreen: React.FC = () => {
 
     try {
       const position = await getCurrentPosition();
-      setAlarmState(prev => ({
-        ...prev,
-        anchorPoint: position,
-      }));
-
-      Alert.alert('Anchor Point Set', 'Anchor point has been set successfully.');
+      
+      // Try to predict bottom type
+      const prediction = await predictBottomType(position);
+      
+      if (prediction && prediction.confidence > 0.4) {
+        Alert.alert(
+          t('suggestedBottomType'),
+          `${t('basedOnNearbyData')}: ${BOTTOM_TYPE_INFO[prediction.bottomType].name}\n\n${t('confidence')}: ${Math.round(prediction.confidence * 100)}% (${prediction.nearbyRecords} ${t('nearbyObservations')})\n\n${t('wouldYouLikeToUse')}?`,
+          [
+            {text: t('no'), style: 'cancel'},
+            {
+              text: t('yes'),
+              onPress: () => {
+                setBottomType(prediction.bottomType);
+                setAlarmState(prev => ({
+                  ...prev,
+                  anchorPoint: position,
+                }));
+                setAnchorStartTime(Date.now());
+              },
+            },
+          ],
+        );
+      } else {
+        setAlarmState(prev => ({
+          ...prev,
+          anchorPoint: position,
+        }));
+        setAnchorStartTime(Date.now());
+        Alert.alert(t('setAnchorPoint'), t('anchorPointSetSuccess'));
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to get current position');
+      Alert.alert(t('error'), t('failedToGetPosition'));
     }
   };
 
   const startAlarm = async () => {
     if (!alarmState.anchorPoint) {
-      Alert.alert('Error', 'Please set anchor point first');
+      Alert.alert(t('error'), t('pleaseSetAnchorPoint'));
       setAlarmState(prev => ({...prev, isActive: false}));
       return;
     }
 
     const hasPermission = await requestLocationPermission();
     if (!hasPermission) {
-      Alert.alert('Permission Required', 'Location permission is required');
+      Alert.alert(t('permissionRequired'), t('locationPermissionRequiredShort'));
       setAlarmState(prev => ({...prev, isActive: false}));
       return;
     }
@@ -356,8 +385,8 @@ export const AnchoringSessionScreen: React.FC = () => {
 
     if (backgroundStarted) {
       Alert.alert(
-        'Background Alarm Active',
-        'Alarm will continue monitoring even when app is in background.',
+        t('backgroundAlarmActive'),
+        t('backgroundAlarmMessage'),
       );
     }
 
@@ -446,11 +475,11 @@ export const AnchoringSessionScreen: React.FC = () => {
         }
 
         Alert.alert(
-          '⚠️ Anchor Drag Alarm',
-          `Boat has moved ${formatLength(
+          `⚠️ ${t('anchorDragAlarm')}`,
+          `${t('boatMoved')} ${formatLength(
             check.distance,
             unitSystem,
-          )} from anchor point (threshold: ${formatLength(
+          )} ${t('fromAnchorPoint')} (${t('threshold')}: ${formatLength(
             alarmState.dragThreshold,
             unitSystem,
           )})`,
@@ -473,7 +502,7 @@ export const AnchoringSessionScreen: React.FC = () => {
 
   const handleSaveSession = async () => {
     if (!calculationResult) {
-      Alert.alert('Error', 'Please calculate first');
+      Alert.alert(t('error'), t('pleaseCalculateFirst'));
       return;
     }
 
@@ -507,75 +536,105 @@ export const AnchoringSessionScreen: React.FC = () => {
     };
 
     await saveSession(session);
-    Alert.alert('Success', 'Session saved');
+    
+    // Save bottom type observation for future predictions
+    if (alarmState.anchorPoint && bottomType) {
+      await saveBottomTypeObservation(
+        alarmState.anchorPoint,
+        bottomType,
+        'high', // User confirmed, so high confidence
+      );
+    }
+    
+    Alert.alert(t('success'), t('sessionSaved'));
   };
 
   const bottomTypeInfo = getBottomTypeInfo(bottomType);
   const gpsAccuracyCheck = checkGpsAccuracy(alarmState.gpsAccuracy);
+
+  const formatElapsedTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
 
   return (
     <ScrollView 
       style={styles.container}
       contentContainerStyle={{paddingBottom: insets.bottom + 16}}>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 1: Enter Conditions</Text>
+        <Text style={styles.sectionTitle}>{t('enterConditions')}</Text>
 
         <InputField
-          label="Water Depth"
+          label={t('waterDepth')}
           value={depth}
           onChangeText={setDepth}
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
+          tooltip={t('waterDepthTooltip')}
         />
 
         <InputField
-          label="Bow Height / Freeboard"
+          label={t('bowHeight')}
           value={bowHeight}
           onChangeText={setBowHeight}
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
+          tooltip={t('bowHeightTooltip')}
         />
 
         <InputField
-          label="Desired Scope Ratio"
+          label={t('desiredScopeRatio')}
           value={scopeRatio}
           onChangeText={setScopeRatio}
           placeholder="5"
+          tooltip={t('desiredScopeRatioTooltip')}
         />
         <Text style={styles.hint}>
-          Common ratios: 3:1 (calm), 5:1 (normal), 7:1 (windy), 10:1 (storm)
+          {t('scopeHint')}
         </Text>
 
         <InputField
-          label="Safety Margin (%)"
+          label={t('safetyMargin')}
           value={safetyMargin}
           onChangeText={setSafetyMargin}
           placeholder="10"
+          tooltip={t('safetyMarginTooltip')}
         />
 
         <View style={styles.row}>
           <View style={styles.halfWidth}>
             <InputField
-              label="Chain Length"
+              label={t('chainLength')}
               value={chainLength}
               onChangeText={setChainLength}
               unit={getLengthUnit(unitSystem)}
               placeholder="0"
+              tooltip={t('chainLengthTooltip')}
             />
           </View>
           <View style={styles.halfWidth}>
             <InputField
-              label="Total Rode Available"
+              label={t('totalRodeAvailable')}
               value={totalRodeAvailable}
               onChangeText={setTotalRodeAvailable}
               unit={getLengthUnit(unitSystem)}
               placeholder="0"
+              tooltip={t('totalRodeAvailableTooltip')}
             />
           </View>
         </View>
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>Rode Type</Text>
+          <Text style={styles.label}>{t('rodeType')}</Text>
           <View style={styles.pickerWrapper}>
             {Object.values(RodeType).map(type => (
               <Button
@@ -591,32 +650,34 @@ export const AnchoringSessionScreen: React.FC = () => {
         <View style={styles.row}>
           <View style={styles.halfWidth}>
             <InputField
-              label="Wind Speed"
+              label={t('windSpeed')}
               value={windSpeed}
               onChangeText={setWindSpeed}
               unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
               placeholder="0"
+              tooltip={t('windSpeedTooltip')}
             />
           </View>
           <View style={styles.halfWidth}>
             <InputField
-              label="Gust Speed (optional)"
+              label={t('gustSpeed')}
               value={gustSpeed}
               onChangeText={setGustSpeed}
               unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
               placeholder="0"
+              tooltip={t('gustSpeedTooltip')}
             />
           </View>
         </View>
 
         <Button
-          title="Get Wind-Based Scope Recommendation"
+          title={t('getWindRecommendation')}
           onPress={handleGetWindRecommendation}
           variant="secondary"
         />
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>Bottom Type</Text>
+          <Text style={styles.label}>{t('bottomType')}</Text>
           <View style={styles.pickerWrapper}>
             {Object.values(BottomType).map(type => (
               <Button
@@ -629,16 +690,16 @@ export const AnchoringSessionScreen: React.FC = () => {
           </View>
           <View style={styles.bottomTypeInfo}>
             <Text style={styles.bottomTypeSuitability}>
-              Suitability: {bottomTypeInfo.suitability}
+              {t('suitability')}: {bottomTypeInfo.suitability}
             </Text>
             <Text style={styles.bottomTypeNotes}>{bottomTypeInfo.notes}</Text>
           </View>
         </View>
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>Anchor Type (Optional)</Text>
+          <Text style={styles.label}>{t('anchorTypeOptional')}</Text>
           <Text style={styles.hint}>
-            Tap to select your anchor type. Recommendations shown based on bottom type.
+            {t('tapToSelectAnchorType')}
           </Text>
           
           <TouchableOpacity
@@ -658,7 +719,7 @@ export const AnchoringSessionScreen: React.FC = () => {
               </View>
             ) : (
               <Text style={styles.anchorSelectorPlaceholder}>
-                Tap to select anchor type
+                {t('tapToSelectAnchorType')}
               </Text>
             )}
             <Text style={styles.anchorSelectorArrow}>›</Text>
@@ -681,14 +742,14 @@ export const AnchoringSessionScreen: React.FC = () => {
           bottomType={bottomType}
         />
 
-        <Button title="Calculate" onPress={handleCalculate} fullWidth />
+        <Button title={t('calculate')} onPress={handleCalculate} fullWidth />
       </View>
 
       {calculationResult && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Step 2: Calculation Results</Text>
+          <Text style={styles.sectionTitle}>{t('calculationResults')}</Text>
           <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>Total Vertical Distance:</Text>
+            <Text style={styles.resultLabel}>{t('totalVerticalDistance')}:</Text>
             <Text style={styles.resultValue}>
               {formatLength(
                 calculationResult.totalVerticalDistance,
@@ -697,7 +758,7 @@ export const AnchoringSessionScreen: React.FC = () => {
             </Text>
           </View>
           <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>Recommended Rode Length:</Text>
+            <Text style={styles.resultLabel}>{t('recommendedRodeLength')}:</Text>
             <Text style={[styles.resultValue, styles.highlight]}>
               {formatLength(
                 calculationResult.recommendedRodeLength,
@@ -716,31 +777,33 @@ export const AnchoringSessionScreen: React.FC = () => {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 3: Swing Radius & Alarm</Text>
+        <Text style={styles.sectionTitle}>{t('swingRadiusAlarm')}</Text>
 
         <InputField
-          label="Actual Rode Deployed"
+          label={t('actualRodeDeployed')}
           value={actualRodeDeployed}
           onChangeText={setActualRodeDeployed}
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
+          tooltip={t('actualRodeDeployedTooltip')}
         />
 
         <InputField
-          label="Boat Length (LOA) - Optional"
+          label={t('boatLength')}
           value={boatLength}
           onChangeText={setBoatLength}
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
+          tooltip={t('boatLengthTooltip')}
         />
 
         {swingRadiusResult && (
           <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>Swing Radius:</Text>
+            <Text style={styles.resultLabel}>{t('swingRadius')}:</Text>
             <Text style={styles.resultValue}>
               {formatLength(swingRadiusResult.radius, unitSystem)}
             </Text>
-            <Text style={styles.resultLabel}>Swing Diameter:</Text>
+            <Text style={styles.resultLabel}>{t('swingDiameter')}:</Text>
             <Text style={styles.resultValue}>
               {formatLength(swingRadiusResult.diameter, unitSystem)}
             </Text>
@@ -748,7 +811,7 @@ export const AnchoringSessionScreen: React.FC = () => {
         )}
 
         <Button
-          title="Set Anchor Point"
+          title={t('setAnchorPoint')}
           onPress={handleSetAnchorPoint}
           variant="secondary"
         />
@@ -756,15 +819,23 @@ export const AnchoringSessionScreen: React.FC = () => {
         {alarmState.anchorPoint && (
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
-              Anchor point set at:{' '}
+              {t('anchorPointSet')}:{' '}
               {alarmState.anchorPoint.latitude.toFixed(6)},{' '}
               {alarmState.anchorPoint.longitude.toFixed(6)}
             </Text>
+            {anchorStartTime && (
+              <View style={styles.timerBox}>
+                <Text style={styles.timerLabel}>⏱️ {t('anchoredFor')}:</Text>
+                <Text style={styles.timerValue}>
+                  {formatElapsedTime(elapsedTime)}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
         <InputField
-          label="Drag Threshold"
+          label={t('dragThreshold')}
           value={alarmState.dragThreshold.toString()}
           onChangeText={text => {
             const num = parseFloat(text);
@@ -773,10 +844,11 @@ export const AnchoringSessionScreen: React.FC = () => {
             }
           }}
           unit={getLengthUnit(unitSystem)}
+          tooltip={t('dragThresholdTooltip')}
         />
 
         <Button
-          title={alarmState.isActive ? 'Stop Alarm' : 'Start Alarm'}
+          title={alarmState.isActive ? t('stopAlarm') : t('startAlarm')}
           onPress={() =>
             setAlarmState(prev => ({...prev, isActive: !prev.isActive}))
           }
@@ -787,7 +859,7 @@ export const AnchoringSessionScreen: React.FC = () => {
         {alarmState.isActive && (
           <View style={styles.alarmStatus}>
             <Text style={styles.alarmStatusText}>
-              Distance from anchor:{' '}
+              {t('distanceFromAnchor')}:{' '}
               {formatLength(alarmState.distanceFromAnchor, unitSystem)}
             </Text>
             {gpsAccuracyCheck.warning && (
@@ -798,7 +870,7 @@ export const AnchoringSessionScreen: React.FC = () => {
             {alarmState.isAlarmTriggered && (
               <View style={styles.alarmTriggered}>
                 <Text style={styles.alarmTriggeredText}>
-                  ⚠️ ALARM: Anchor drag detected!
+                  ⚠️ {t('alarmTriggered')}
                 </Text>
               </View>
             )}
@@ -806,43 +878,65 @@ export const AnchoringSessionScreen: React.FC = () => {
         )}
 
         {swingRadiusResult && alarmState.anchorPoint && (
-          <SwingCircleView
-            anchorPoint={alarmState.anchorPoint}
-            currentPosition={alarmState.currentPosition}
-            swingRadius={
-              unitSystem === UnitSystem.METRIC
-                ? swingRadiusResult.radius
-                : convertLength(
-                    swingRadiusResult.radius,
-                    UnitSystem.IMPERIAL,
-                    UnitSystem.METRIC,
-                  )
-            }
-            unitSystem={unitSystem}
-          />
+          <>
+            <SwingCircleView
+              anchorPoint={alarmState.anchorPoint}
+              currentPosition={alarmState.currentPosition}
+              swingRadius={
+                unitSystem === UnitSystem.METRIC
+                  ? swingRadiusResult.radius
+                  : convertLength(
+                      swingRadiusResult.radius,
+                      UnitSystem.IMPERIAL,
+                      UnitSystem.METRIC,
+                    )
+              }
+              unitSystem={unitSystem}
+            />
+            <Button
+              title={`📊 ${t('openMonitorView')}`}
+              onPress={() => {
+                (navigation as any).navigate('MonitorView', {
+                  anchorPoint: alarmState.anchorPoint,
+                  swingRadius:
+                    unitSystem === UnitSystem.METRIC
+                      ? swingRadiusResult.radius
+                      : convertLength(
+                          swingRadiusResult.radius,
+                          UnitSystem.IMPERIAL,
+                          UnitSystem.METRIC,
+                        ),
+                  unitSystem,
+                  dragThreshold: alarmState.dragThreshold,
+                });
+              }}
+              variant="secondary"
+              fullWidth
+            />
+          </>
         )}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 4: Session Notes</Text>
-        <Text style={styles.label}>Notes (optional)</Text>
+        <Text style={styles.sectionTitle}>{t('sessionNotes')}</Text>
+        <Text style={styles.label}>{t('notesOptional')}</Text>
         <TextInput
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotes}
-          placeholder="Record conditions, anchor type used, issues encountered..."
+          placeholder={t('notesPlaceholder')}
           multiline
           numberOfLines={4}
           textAlignVertical="top"
         />
         <Text style={styles.hint}>
-          Useful for learning and troubleshooting
+          {t('notesHint')}
         </Text>
       </View>
 
       <View style={styles.section}>
         <Button
-          title="Save Session"
+          title={t('saveSession')}
           onPress={handleSaveSession}
           variant="secondary"
           fullWidth
@@ -1047,6 +1141,25 @@ const styles = StyleSheet.create({
     minHeight: 100,
     backgroundColor: '#fff',
     color: '#333',
+  },
+  timerBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#e7f3ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  timerLabel: {
+    fontSize: 12,
+    color: '#004085',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  timerValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#007AFF',
   },
 });
 

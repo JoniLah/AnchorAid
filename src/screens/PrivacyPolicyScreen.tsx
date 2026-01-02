@@ -108,16 +108,59 @@ export const PrivacyPolicyScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>6. Third-Party Services</Text>
+        <Text style={styles.heading}>6. Advertising</Text>
         <Text style={styles.paragraph}>
-          Anchor Aid does not use third-party analytics, advertising, or data
-          collection services. All functionality operates entirely on your
-          device.
+          Anchor Aid may display advertisements provided by third-party
+          advertising networks. These advertisements help support the development
+          and maintenance of the App.
+        </Text>
+        <Text style={styles.paragraph}>
+          When advertisements are displayed:
+        </Text>
+        <Text style={styles.bulletPoint}>
+          • Third-party advertisers may collect information about your device
+          (such as device type, operating system, and general location)
+        </Text>
+        <Text style={styles.bulletPoint}>
+          • Advertisers may use cookies, device identifiers, or similar
+          technologies to deliver personalized ads
+        </Text>
+        <Text style={styles.bulletPoint}>
+          • We do not control the content of advertisements or the data
+          collection practices of third-party advertisers
+        </Text>
+        <Text style={styles.paragraph}>
+          You can learn more about how advertisers use your data by reviewing
+          their privacy policies. Many advertising networks provide opt-out
+          mechanisms through their websites or device settings.
+        </Text>
+        <Text style={styles.paragraph}>
+          Our core functionality (anchor monitoring, session data) operates
+          independently of advertising and does not share your personal
+          anchoring data with advertisers.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>7. Your Rights</Text>
+        <Text style={styles.heading}>7. Third-Party Services</Text>
+        <Text style={styles.paragraph}>
+          Anchor Aid may use third-party services for:
+        </Text>
+        <Text style={styles.bulletPoint}>
+          • Advertising (as described above)
+        </Text>
+        <Text style={styles.bulletPoint}>
+          • App analytics and crash reporting (if implemented)
+        </Text>
+        <Text style={styles.paragraph}>
+          These services may collect information about your device and usage
+          patterns. We do not share your personal anchoring session data with
+          these services.
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.heading}>8. Your Rights</Text>
         <Text style={styles.paragraph}>
           You have full control over your data:
         </Text>
@@ -133,7 +176,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>8. Safety Disclaimer</Text>
+        <Text style={styles.heading}>9. Safety Disclaimer</Text>
         <Text style={styles.paragraph}>
           Anchor Aid is a tool to assist with anchoring. It is not a substitute
           for proper seamanship, watchkeeping, or navigation. Always maintain
@@ -146,7 +189,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>9. Changes to This Policy</Text>
+        <Text style={styles.heading}>10. Changes to This Policy</Text>
         <Text style={styles.paragraph}>
           We may update this privacy policy from time to time. The "Last
           updated" date at the top indicates when changes were made. Continued
@@ -156,11 +199,17 @@ export const PrivacyPolicyScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>10. Contact</Text>
+        <Text style={styles.heading}>11. Contact</Text>
         <Text style={styles.paragraph}>
           If you have questions about this privacy policy or how Anchor Aid
           handles your data, please review the app settings or contact support
           through the app store listing.
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.copyright}>
+          Copyright © {new Date().getFullYear()} Feleroid. All rights reserved.
         </Text>
       </View>
 
@@ -216,6 +265,13 @@ const styles = StyleSheet.create({
     color: '#333',
     marginLeft: 16,
     marginBottom: 8,
+  },
+  copyright: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });
 
