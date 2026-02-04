@@ -60,8 +60,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
-    paddingVertical: 8,
   },
 });
 

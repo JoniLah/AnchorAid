@@ -105,7 +105,10 @@ export function shouldTriggerAlarm(
 /**
  * Check GPS accuracy and return warning if poor
  */
-export function checkGpsAccuracy(accuracy?: number): {
+export function checkGpsAccuracy(
+  accuracy?: number,
+  translate?: (key: string) => string,
+): {
   isPoor: boolean;
   warning?: string;
 } {
@@ -115,17 +118,23 @@ export function checkGpsAccuracy(accuracy?: number): {
     };
   }
 
+  const accuracyStr = accuracy.toFixed(1);
+
   if (accuracy > 15) {
     return {
       isPoor: true,
-      warning: `GPS accuracy is poor (${accuracy.toFixed(1)}m). Alarm may be less reliable.`,
+      warning: translate
+        ? translate('gpsAccuracyPoor').replace('{accuracy}', accuracyStr)
+        : `GPS accuracy is poor (${accuracyStr}m). Alarm may be less reliable.`,
     };
   }
 
   if (accuracy > 10) {
     return {
       isPoor: false,
-      warning: `GPS accuracy is moderate (${accuracy.toFixed(1)}m). Monitor carefully.`,
+      warning: translate
+        ? translate('gpsAccuracyModerate').replace('{accuracy}', accuracyStr)
+        : `GPS accuracy is moderate (${accuracyStr}m). Monitor carefully.`,
     };
   }
 

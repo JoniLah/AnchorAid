@@ -1,5 +1,6 @@
 import React from 'react';
 import {View, Text, StyleSheet, TouchableOpacity} from 'react-native';
+import {useTheme} from '../theme/ThemeContext';
 
 interface PickerFieldProps<T> {
   label: string;
@@ -14,22 +15,42 @@ export function PickerField<T>({
   onValueChange,
   options,
 }: PickerFieldProps<T>) {
+  const {colors, effectiveTheme} = useTheme();
+  const isDark = effectiveTheme === 'dark';
+  
+  // Use much darker blue in dark mode for better visibility
+  const primaryColor = isDark ? '#1E88E5' : colors.primary;
+  // Increase contrast for selected items - use more opaque background
+  const selectedBgColor = isDark ? 'rgba(30, 136, 229, 0.4)' : '#e7f3ff';
+  
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, {color: colors.text}]}>{label}</Text>
       <View style={styles.optionsContainer}>
         {options.map((option, index) => (
           <TouchableOpacity
             key={index}
             style={[
               styles.option,
-              value === option.value && styles.optionSelected,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.surface,
+              },
+              value === option.value && {
+                borderColor: primaryColor,
+                backgroundColor: selectedBgColor,
+                borderWidth: 2,
+              },
             ]}
             onPress={() => onValueChange(option.value)}>
             <Text
               style={[
                 styles.optionText,
-                value === option.value && styles.optionTextSelected,
+                {color: colors.textSecondary},
+                value === option.value && {
+                  color: primaryColor,
+                  fontWeight: '600',
+                },
               ]}>
               {option.label}
             </Text>
@@ -48,7 +69,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 6,
-    color: '#333',
   },
   optionsContainer: {
     flexDirection: 'row',
@@ -59,21 +79,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
-    backgroundColor: '#fff',
-  },
-  optionSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#e7f3ff',
   },
   optionText: {
     fontSize: 14,
-    color: '#666',
-  },
-  optionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
   },
 });
 

@@ -37,6 +37,7 @@ export function getAnchorIcon(type: AnchorType): string {
     [AnchorType.NAVY_STOCKLESS]: '⚓', // Navy stockless
     [AnchorType.KEDGE]: '⚓', // Traditional stock
     [AnchorType.GRAPNEL]: '⚓', // Grapnel
+    [AnchorType.MUSHROOM]: '⚓', // Mushroom
     [AnchorType.OTHER]: '⚓', // Other
   };
 
@@ -69,6 +70,7 @@ export function getAnchorIconDetailed(type: AnchorType): string {
     [AnchorType.NAVY_STOCKLESS]: '🛡️', // Navy - shield
     [AnchorType.KEDGE]: '⚓', // Traditional - anchor
     [AnchorType.GRAPNEL]: '🪝', // Grapnel - hook
+    [AnchorType.MUSHROOM]: '🍄', // Mushroom - mushroom emoji
     [AnchorType.OTHER]: '❓', // Other - question
   };
 

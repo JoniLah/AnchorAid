@@ -9,6 +9,8 @@ import {
   Platform,
   TextInput,
   TouchableOpacity,
+  Modal,
+  Linking,
 } from 'react-native';
 import {useNavigation, useRoute, useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -25,7 +27,7 @@ import {
   Location,
   AppSettings,
 } from '../types';
-import {loadSettings, saveSession} from '../services/storage';
+import {loadSettings, loadSessions, saveSession} from '../services/storage';
 import {
   requestLocationPermission,
   getCurrentPosition,
@@ -42,21 +44,20 @@ import {
   playAlarmSound,
   stopAlarmSound,
 } from '../services/alarmSound';
-import {
-  clearLockScreenNotification,
-  updateLockScreenNotification,
-} from '../services/lockScreenNotification';
+import {clearLockScreenNotification} from '../services/lockScreenNotification';
 import {calculateScope, getRecommendedScopeRatio} from '../utils/scopeCalculator';
 import {calculateSwingRadius} from '../utils/swingCalculator';
-import {getBottomTypeInfo, BOTTOM_TYPE_INFO} from '../utils/bottomType';
+import {getBottomTypeInfo, BOTTOM_TYPE_INFO, getBottomTypeName, getSuitabilityRating} from '../utils/bottomType';
 import {
   getAnchorTypeInfo,
   getRecommendedAnchorsForBottom,
   isAnchorRecommendedForBottom,
   ANCHOR_TYPE_INFO,
 } from '../utils/anchorType';
+import {getAnchorDescription} from '../utils/anchorDescription';
 import {getAnchorIconDetailed} from '../utils/anchorIcons';
 import {AnchorTypeModal} from '../components/AnchorTypeModal';
+import {Image} from 'react-native';
 import {
   predictBottomType,
   saveBottomTypeObservation,
@@ -67,12 +68,45 @@ import {
   checkGpsAccuracy,
 } from '../utils/alarmLogic';
 import {formatLength, getLengthUnit, convertLength} from '../utils/units';
-import {t} from '../i18n';
+import {useTheme} from '../theme/ThemeContext';
+import {t, onLanguageChange} from '../i18n';
+
+/**
+ * Get the image source for an anchor type
+ */
+const getAnchorImageSource = (type: AnchorType) => {
+  const imageMap: Record<AnchorType, any> = {
+    [AnchorType.DANFORTH]: require('../../assets/graphics/danforth.png'),
+    [AnchorType.BRUCE]: require('../../assets/graphics/bruce.png'),
+    [AnchorType.PLOW]: require('../../assets/graphics/plow.png'),
+    [AnchorType.DELTA]: require('../../assets/graphics/delta.png'),
+    [AnchorType.ROCNA]: require('../../assets/graphics/rocna.png'),
+    [AnchorType.MANTUS]: require('../../assets/graphics/mantus.png'),
+    [AnchorType.FORTRESS]: require('../../assets/graphics/fortress.png'),
+    [AnchorType.AC14]: require('../../assets/graphics/ac14.png'),
+    [AnchorType.SPADE]: require('../../assets/graphics/spade.png'),
+    [AnchorType.COBRA]: require('../../assets/graphics/cobra.png'),
+    [AnchorType.HERRESHOFF]: require('../../assets/graphics/herreshoff.png'),
+    [AnchorType.NORTHILL]: require('../../assets/graphics/admiralty.png'),
+    [AnchorType.ULTRA]: require('../../assets/graphics/ultra.png'),
+    [AnchorType.EXCEL]: require('../../assets/graphics/excel.png'),
+    [AnchorType.VULCAN]: require('../../assets/graphics/vulcan.png'),
+    [AnchorType.SUPREME]: require('../../assets/graphics/supreme.png'),
+    [AnchorType.STOCKLESS]: require('../../assets/graphics/stockless.png'),
+    [AnchorType.NAVY_STOCKLESS]: require('../../assets/graphics/navy-stockless.png'),
+    [AnchorType.KEDGE]: require('../../assets/graphics/basic-anchor.png'),
+    [AnchorType.GRAPNEL]: require('../../assets/graphics/grapnel.png'),
+    [AnchorType.MUSHROOM]: require('../../assets/graphics/mushroom.png'),
+    [AnchorType.OTHER]: require('../../assets/graphics/other.png'),
+  };
+  return imageMap[type] || require('../../assets/graphics/other.png');
+};
 
 export const AnchoringSessionScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const {colors, effectiveTheme} = useTheme();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(UnitSystem.METRIC);
 
@@ -83,7 +117,8 @@ export const AnchoringSessionScreen: React.FC = () => {
   const [safetyMargin, setSafetyMargin] = useState('');
   const [chainLength, setChainLength] = useState('');
   const [totalRodeAvailable, setTotalRodeAvailable] = useState('');
-  const [rodeType, setRodeType] = useState<RodeType>(RodeType.CHAIN);
+  const [rodeType, setRodeType] = useState<RodeType>(RodeType.ROPE);
+  const [rodeTypeModalVisible, setRodeTypeModalVisible] = useState(false);
   const [windSpeed, setWindSpeed] = useState('');
   const [gustSpeed, setGustSpeed] = useState('');
   const [bottomType, setBottomType] = useState<BottomType>(BottomType.UNKNOWN);
@@ -110,11 +145,67 @@ export const AnchoringSessionScreen: React.FC = () => {
   const watchIdRef = useRef<number | null>(null);
   const [anchorStartTime, setAnchorStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [languageKey, setLanguageKey] = useState(0);
 
   useEffect(() => {
     loadInitialSettings();
     initializeAudio();
   }, []);
+
+  // Listen for language changes to force re-render of translated content
+  useEffect(() => {
+    const unsubscribe = onLanguageChange(() => {
+      setLanguageKey(prev => prev + 1);
+    });
+    return unsubscribe;
+  }, []);
+
+  // When opening a saved session (from Session History), prefill all inputs from that session
+  useEffect(() => {
+    const sessionId = (route.params as {sessionId?: string} | undefined)?.sessionId;
+    if (!sessionId) return;
+    loadSessions().then(sessions => {
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session) return;
+      setUnitSystem(session.unitSystem);
+      setDepth(session.depth != null ? String(session.depth) : '');
+      setBowHeight(session.bowHeight != null ? String(session.bowHeight) : '');
+      setScopeRatio(session.scopeRatio != null ? String(session.scopeRatio) : '5');
+      setSafetyMargin(session.safetyMargin != null ? String(session.safetyMargin) : '');
+      setChainLength(session.chainLength != null ? String(session.chainLength) : '');
+      setTotalRodeAvailable(session.totalRodeAvailable != null ? String(session.totalRodeAvailable) : '');
+      setRodeType(session.rodeType ?? RodeType.ROPE);
+      setWindSpeed(session.windSpeed != null ? String(session.windSpeed) : '');
+      setGustSpeed(session.gustSpeed != null ? String(session.gustSpeed) : '');
+      setBottomType(session.bottomType ?? BottomType.UNKNOWN);
+      setAnchorType(session.anchorType ?? undefined);
+      setActualRodeDeployed(session.actualRodeDeployed != null ? String(session.actualRodeDeployed) : '');
+      setBoatLength(session.boatLength != null ? String(session.boatLength) : '');
+      setNotes(session.notes ?? '');
+      setAlarmState(prev => ({
+        ...prev,
+        dragThreshold: session.dragThreshold ?? prev.dragThreshold,
+        anchorPoint: session.anchorPoint,
+      }));
+      if (session.recommendedRodeLength != null) {
+        setCalculationResult({
+          totalVerticalDistance: (session.depth ?? 0) + (session.bowHeight ?? 0),
+          recommendedRodeLength: session.recommendedRodeLength,
+          exceedsAvailable: false,
+        });
+      } else {
+        setCalculationResult(null);
+      }
+      if (session.swingRadius != null) {
+        setSwingRadiusResult({
+          radius: session.swingRadius,
+          diameter: session.swingRadius * 2,
+        });
+      } else {
+        setSwingRadiusResult(null);
+      }
+    });
+  }, [(route.params as {sessionId?: string} | undefined)?.sessionId]);
 
   // Check for background alarms when screen comes into focus
   // checkBackgroundAlarm() clears the alarm after reading, so it can only trigger once
@@ -168,23 +259,109 @@ export const AnchoringSessionScreen: React.FC = () => {
   const loadInitialSettings = async () => {
     const loaded = await loadSettings();
     setSettings(loaded);
-    setUnitSystem(loaded.unitSystem);
-    setScopeRatio(loaded.defaultScopeRatio.toString());
+    setUnitSystem(loaded.unitSystem ?? UnitSystem.METRIC);
+    setScopeRatio((loaded.defaultScopeRatio ?? 5).toString());
     setAlarmState(prev => ({
       ...prev,
-      dragThreshold: loaded.defaultDragThreshold,
-      updateInterval: loaded.defaultUpdateInterval,
-      smoothingWindow: loaded.defaultSmoothingWindow,
+      dragThreshold: loaded.defaultDragThreshold ?? 30,
+      updateInterval: loaded.defaultUpdateInterval ?? 5,
+      smoothingWindow: loaded.defaultSmoothingWindow ?? 5,
     }));
+
+    // Load default values if they exist
+    if (loaded.defaultBowHeight !== undefined && loaded.defaultBowHeight !== null) {
+      setBowHeight(loaded.defaultBowHeight.toString());
+    }
+    if (loaded.defaultSafetyMargin !== undefined && loaded.defaultSafetyMargin !== null) {
+      setSafetyMargin(loaded.defaultSafetyMargin.toString());
+    }
+    if (loaded.defaultChainLength !== undefined && loaded.defaultChainLength !== null) {
+      setChainLength(loaded.defaultChainLength.toString());
+    }
+    if (loaded.defaultTotalRodeAvailable !== undefined && loaded.defaultTotalRodeAvailable !== null) {
+      setTotalRodeAvailable(loaded.defaultTotalRodeAvailable.toString());
+    }
+    if (loaded.defaultRodeType !== undefined && loaded.defaultRodeType !== null) {
+      setRodeType(loaded.defaultRodeType);
+    }
+  };
+
+  const handleLoadDefaults = () => {
+    if (!settings) return;
+
+    setScopeRatio((settings.defaultScopeRatio ?? 5).toString());
+    if (settings.defaultBowHeight !== undefined && settings.defaultBowHeight !== null) {
+      setBowHeight(settings.defaultBowHeight.toString());
+    } else {
+      setBowHeight('');
+    }
+    if (settings.defaultSafetyMargin !== undefined) {
+      setSafetyMargin(settings.defaultSafetyMargin.toString());
+    } else {
+      setSafetyMargin('');
+    }
+    if (settings.defaultChainLength !== undefined) {
+      setChainLength(settings.defaultChainLength.toString());
+    } else {
+      setChainLength('');
+    }
+    if (settings.defaultTotalRodeAvailable !== undefined) {
+      setTotalRodeAvailable(settings.defaultTotalRodeAvailable.toString());
+    } else {
+      setTotalRodeAvailable('');
+    }
+    if (settings.defaultRodeType !== undefined) {
+      setRodeType(settings.defaultRodeType);
+    } else {
+      setRodeType(RodeType.ROPE);
+    }
+  };
+
+  const handleClearFields = () => {
+    setDepth('');
+    setBowHeight('');
+    setScopeRatio('5');
+    setSafetyMargin('');
+    setChainLength('');
+    setTotalRodeAvailable('');
+    setRodeType(RodeType.ROPE);
+    setWindSpeed('');
+    setGustSpeed('');
+    setBottomType(BottomType.UNKNOWN);
+    setAnchorType(undefined);
+    setActualRodeDeployed('');
+    setBoatLength('');
+    setNotes('');
+  };
+
+  const handleCreateNewSession = () => {
+    // Navigate to new session (without sessionId) but keep current values
+    // Use setParams to update the route params, which will update the title
+    // but keep all the current form values
+    (navigation as any).setParams({sessionId: undefined});
   };
 
   const handleCalculate = () => {
-    const depthNum = parseFloat(depth);
-    const bowHeightNum = parseFloat(bowHeight);
-    const scopeRatioNum = parseFloat(scopeRatio);
+    const depthTrimmed = depth.trim();
+    const bowHeightTrimmed = bowHeight.trim();
+    const scopeRatioTrimmed = scopeRatio.trim();
 
-    if (!depthNum || !bowHeightNum || !scopeRatioNum) {
+    if (!depthTrimmed || !bowHeightTrimmed || !scopeRatioTrimmed) {
       Alert.alert(t('error'), `${t('pleaseEnter')} depth, bow height, and scope ratio`);
+      return;
+    }
+
+    const depthNum = parseFloat(depthTrimmed);
+    const bowHeightNum = parseFloat(bowHeightTrimmed);
+    const scopeRatioNum = parseFloat(scopeRatioTrimmed);
+
+    if (isNaN(depthNum) || isNaN(bowHeightNum) || isNaN(scopeRatioNum)) {
+      Alert.alert(t('error'), `${t('pleaseEnter')} depth, bow height, and scope ratio`);
+      return;
+    }
+
+    if (depthNum <= 0 || bowHeightNum < 0 || scopeRatioNum <= 0) {
+      Alert.alert(t('error'), 'Depth and scope ratio must be greater than 0. Bow height must be 0 or greater.');
       return;
     }
 
@@ -218,16 +395,19 @@ export const AnchoringSessionScreen: React.FC = () => {
           )
       : undefined;
 
-    const result = calculateScope({
-      depth: depthM,
-      bowHeight: bowHeightM,
-      scopeRatio: scopeRatioNum,
-      safetyMargin: safetyMargin ? parseFloat(safetyMargin) : undefined,
-      chainLength: chainLengthM,
-      totalRodeAvailable: totalRodeM,
-      rodeType,
-      unitSystem: UnitSystem.METRIC, // Always calculate in metric
-    });
+    const result = calculateScope(
+      {
+        depth: depthM,
+        bowHeight: bowHeightM,
+        scopeRatio: scopeRatioNum,
+        safetyMargin: safetyMargin ? parseFloat(safetyMargin) : undefined,
+        chainLength: chainLengthM,
+        totalRodeAvailable: totalRodeM,
+        rodeType,
+        unitSystem: UnitSystem.METRIC, // Always calculate in metric
+      },
+      (key: string) => t(key as any),
+    );
 
     // Convert back to display units
     const displayResult = {
@@ -293,7 +473,7 @@ export const AnchoringSessionScreen: React.FC = () => {
 
   const handleGetWindRecommendation = () => {
     if (!windSpeed) {
-      Alert.alert(t('error'), `${t('pleaseEnter')} wind speed`);
+      Alert.alert(t('error'), t('pleaseEnterWindSpeed'));
       return;
     }
 
@@ -305,9 +485,19 @@ export const AnchoringSessionScreen: React.FC = () => {
       unitSystem,
     );
 
+    // Get translated note based on recommendation type
+    let translatedNote = '';
+    if (recommendation.recommended === 4) {
+      translatedNote = t('lightConditionsNote');
+    } else if (recommendation.recommended === 6) {
+      translatedNote = t('moderateConditionsNote');
+    } else {
+      translatedNote = t('strongConditionsNote');
+    }
+
     Alert.alert(
-      'Recommended Scope',
-      `${recommendation.note}\n\nSuggested scope: ${recommendation.recommended}:1 (range: ${recommendation.min}:1 to ${recommendation.max}:1)`,
+      t('recommendedScope'),
+      `${translatedNote}\n\n${t('suggestedScope')}: ${recommendation.recommended}:1 (${t('range')}: ${recommendation.min}:1 to ${recommendation.max}:1)`,
     );
   };
 
@@ -330,7 +520,7 @@ export const AnchoringSessionScreen: React.FC = () => {
       if (prediction && prediction.confidence > 0.4) {
         Alert.alert(
           t('suggestedBottomType'),
-          `${t('basedOnNearbyData')}: ${BOTTOM_TYPE_INFO[prediction.bottomType].name}\n\n${t('confidence')}: ${Math.round(prediction.confidence * 100)}% (${prediction.nearbyRecords} ${t('nearbyObservations')})\n\n${t('wouldYouLikeToUse')}?`,
+          `${t('basedOnNearbyData')}: ${getBottomTypeName(prediction.bottomType, t)}\n\n${t('confidence')}: ${Math.round(prediction.confidence * 100)}% (${prediction.nearbyRecords} ${t('nearbyObservations')})\n\n${t('wouldYouLikeToUse')}?`,
           [
             {text: t('no'), style: 'cancel'},
             {
@@ -357,6 +547,48 @@ export const AnchoringSessionScreen: React.FC = () => {
     } catch (error) {
       Alert.alert(t('error'), t('failedToGetPosition'));
     }
+  };
+
+  const handleShowAnchorPointOnMap = () => {
+    if (!alarmState.anchorPoint) return;
+    const {latitude, longitude} = alarmState.anchorPoint;
+    const url =
+      Platform.OS === 'ios'
+        ? `https://maps.apple.com/?q=${latitude},${longitude}&ll=${latitude},${longitude}`
+        : `https://www.google.com/maps?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
+  const handleStopAnchoring = () => {
+    Alert.alert(
+      t('stopAnchoring'),
+      t('clearAnchorPoint') + '?',
+      [
+        {text: t('cancel'), style: 'cancel'},
+        {
+          text: t('yes'),
+          style: 'destructive',
+          onPress: async () => {
+            // Stop alarm if active
+            if (alarmState.isActive) {
+              await stopAlarm();
+              setAlarmState(prev => ({...prev, isActive: false}));
+            }
+            // Clear anchor point and reset timer
+            setAlarmState(prev => ({
+              ...prev,
+              anchorPoint: undefined,
+              currentPosition: undefined,
+              distanceFromAnchor: 0,
+              isAlarmTriggered: false,
+            }));
+            setAnchorStartTime(null);
+            setElapsedTime(0);
+            setPositionHistory([]);
+          },
+        },
+      ],
+    );
   };
 
   const startAlarm = async () => {
@@ -420,6 +652,9 @@ export const AnchoringSessionScreen: React.FC = () => {
     
     // Stop alarm sound
     await stopAlarmSound();
+    
+    // Clear notifications
+    await clearLockScreenNotification();
     
     setAlarmState(prev => ({
       ...prev,
@@ -549,8 +784,8 @@ export const AnchoringSessionScreen: React.FC = () => {
     Alert.alert(t('success'), t('sessionSaved'));
   };
 
-  const bottomTypeInfo = getBottomTypeInfo(bottomType);
-  const gpsAccuracyCheck = checkGpsAccuracy(alarmState.gpsAccuracy);
+  const bottomTypeInfo = getBottomTypeInfo(bottomType, t);
+  const gpsAccuracyCheck = checkGpsAccuracy(alarmState.gpsAccuracy, (key: string) => t(key as any));
 
   const formatElapsedTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -567,11 +802,42 @@ export const AnchoringSessionScreen: React.FC = () => {
   };
 
   return (
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
     <ScrollView 
-      style={styles.container}
+      style={styles.scrollView}
       contentContainerStyle={{paddingBottom: insets.bottom + 16}}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('enterConditions')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <View style={styles.sectionHeaderWithButtons}>
+          <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('enterConditions')}</Text>
+          <View style={styles.actionButtonsContainer}>
+            {!(route.params as {sessionId?: string} | undefined)?.sessionId && (
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.actionButton, {backgroundColor: colors.primary}]}
+                  onPress={handleLoadDefaults}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.actionButtonText, {color: '#fff'}]}>{t('loadDefaults')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, {backgroundColor: colors.error}]}
+                  onPress={handleClearFields}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.actionButtonText, {color: '#fff'}]}>{t('clearFields')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {(route.params as {sessionId?: string} | undefined)?.sessionId && (
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.actionButtonFullWidth, {backgroundColor: colors.success}]}
+                  onPress={handleCreateNewSession}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.actionButtonText, {color: '#fff'}]}>{t('createNewSessionWithValues')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
 
         <InputField
           label={t('waterDepth')}
@@ -580,6 +846,7 @@ export const AnchoringSessionScreen: React.FC = () => {
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
           tooltip={t('waterDepthTooltip')}
+          required
         />
 
         <InputField
@@ -589,6 +856,7 @@ export const AnchoringSessionScreen: React.FC = () => {
           unit={getLengthUnit(unitSystem)}
           placeholder="0"
           tooltip={t('bowHeightTooltip')}
+          required
         />
 
         <InputField
@@ -596,9 +864,11 @@ export const AnchoringSessionScreen: React.FC = () => {
           value={scopeRatio}
           onChangeText={setScopeRatio}
           placeholder="5"
+          suffix=":1"
           tooltip={t('desiredScopeRatioTooltip')}
+          required
         />
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, {color: colors.textSecondary}]}>
           {t('scopeHint')}
         </Text>
 
@@ -610,65 +880,119 @@ export const AnchoringSessionScreen: React.FC = () => {
           tooltip={t('safetyMarginTooltip')}
         />
 
-        <View style={styles.row}>
-          <View style={styles.halfWidth}>
-            <InputField
-              label={t('chainLength')}
-              value={chainLength}
-              onChangeText={setChainLength}
-              unit={getLengthUnit(unitSystem)}
-              placeholder="0"
-              tooltip={t('chainLengthTooltip')}
-            />
-          </View>
-          <View style={styles.halfWidth}>
-            <InputField
-              label={t('totalRodeAvailable')}
-              value={totalRodeAvailable}
-              onChangeText={setTotalRodeAvailable}
-              unit={getLengthUnit(unitSystem)}
-              placeholder="0"
-              tooltip={t('totalRodeAvailableTooltip')}
-            />
-          </View>
-        </View>
+        <InputField
+          label={t('chainLength')}
+          value={chainLength}
+          onChangeText={setChainLength}
+          unit={getLengthUnit(unitSystem)}
+          placeholder="0"
+          tooltip={t('chainLengthTooltip')}
+        />
+        <InputField
+          label={t('totalRodeAvailable')}
+          value={totalRodeAvailable}
+          onChangeText={setTotalRodeAvailable}
+          unit={getLengthUnit(unitSystem)}
+          placeholder="0"
+          tooltip={t('totalRodeAvailableTooltip')}
+        />
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>{t('rodeType')}</Text>
-          <View style={styles.pickerWrapper}>
-            {Object.values(RodeType).map(type => (
-              <Button
-                key={type}
-                title={type}
-                onPress={() => setRodeType(type)}
-                variant={rodeType === type ? 'primary' : 'secondary'}
-              />
-            ))}
-          </View>
+          <Text style={[styles.label, {color: colors.text}]}>
+            {t('rodeType')}<Text style={{color: colors.error}}> *</Text>
+          </Text>
+          <TouchableOpacity
+            style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
+            onPress={() => setRodeTypeModalVisible(true)}
+            activeOpacity={0.7}>
+            <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
+              {(() => {
+                switch (rodeType) {
+                  case RodeType.CHAIN:
+                    return t('chain');
+                  case RodeType.ROPE_CHAIN:
+                    return t('ropeChain');
+                  case RodeType.ROPE:
+                    return t('rope');
+                  default:
+                    return rodeType;
+                }
+              })()}
+            </Text>
+            <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
+          </TouchableOpacity>
+
+          <Modal
+            visible={rodeTypeModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setRodeTypeModalVisible(false)}>
+            <TouchableOpacity
+              style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay || 'rgba(0, 0, 0, 0.5)'}]}
+              activeOpacity={1}
+              onPress={() => setRodeTypeModalVisible(false)}>
+              <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+                <Text style={[styles.modalTitle, {color: colors.text}]}>{t('rodeType')}</Text>
+                {Object.values(RodeType).map(type => {
+                  const getRodeTypeLabel = (rodeType: RodeType): string => {
+                    switch (rodeType) {
+                      case RodeType.CHAIN:
+                        return t('chain');
+                      case RodeType.ROPE_CHAIN:
+                        return t('ropeChain');
+                      case RodeType.ROPE:
+                        return t('rope');
+                      default:
+                        return rodeType;
+                    }
+                  };
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.modalOption,
+                        {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                        rodeType === type && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
+                      ]}
+                      onPress={() => {
+                        setRodeType(type);
+                        setRodeTypeModalVisible(false);
+                      }}>
+                      <Text
+                        style={[
+                          styles.modalOptionText,
+                          {color: colors.text},
+                          rodeType === type && {color: colors.primary, fontWeight: '600'},
+                        ]}>
+                        {getRodeTypeLabel(type)}
+                      </Text>
+                      {rodeType === type && (
+                        <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </TouchableOpacity>
+          </Modal>
         </View>
 
-        <View style={styles.row}>
-          <View style={styles.halfWidth}>
-            <InputField
-              label={t('windSpeed')}
-              value={windSpeed}
-              onChangeText={setWindSpeed}
-              unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
-              placeholder="0"
-              tooltip={t('windSpeedTooltip')}
-            />
-          </View>
-          <View style={styles.halfWidth}>
-            <InputField
-              label={t('gustSpeed')}
-              value={gustSpeed}
-              onChangeText={setGustSpeed}
-              unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
-              placeholder="0"
-              tooltip={t('gustSpeedTooltip')}
-            />
-          </View>
-        </View>
+        <InputField
+          label={t('windSpeed')}
+          value={windSpeed}
+          onChangeText={setWindSpeed}
+          unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
+          placeholder="0"
+          tooltip={t('windSpeedTooltip')}
+        />
+        <InputField
+          label={t('gustSpeed')}
+          value={gustSpeed}
+          onChangeText={setGustSpeed}
+          unit={unitSystem === UnitSystem.METRIC ? 'm/s' : 'knots'}
+          placeholder="0"
+          tooltip={t('gustSpeedTooltip')}
+        />
 
         <Button
           title={t('getWindRecommendation')}
@@ -677,58 +1001,61 @@ export const AnchoringSessionScreen: React.FC = () => {
         />
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>{t('bottomType')}</Text>
+          <Text style={[styles.label, {color: colors.text}]}>{t('bottomType')}</Text>
           <View style={styles.pickerWrapper}>
             {Object.values(BottomType).map(type => (
               <Button
                 key={type}
-                title={BOTTOM_TYPE_INFO[type].name}
+                title={getBottomTypeName(type, t)}
                 onPress={() => setBottomType(type)}
                 variant={bottomType === type ? 'primary' : 'secondary'}
               />
             ))}
           </View>
-          <View style={styles.bottomTypeInfo}>
-            <Text style={styles.bottomTypeSuitability}>
-              {t('suitability')}: {bottomTypeInfo.suitability}
+          <View style={[styles.bottomTypeInfo, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+            <Text style={[styles.bottomTypeSuitability, {color: colors.text}]}>
+              {t('suitability')}: {getSuitabilityRating(bottomTypeInfo.suitability, t)}
             </Text>
-            <Text style={styles.bottomTypeNotes}>{bottomTypeInfo.notes}</Text>
+            <Text style={[styles.bottomTypeNotes, {color: colors.textSecondary}]}>{bottomTypeInfo.notes}</Text>
           </View>
         </View>
 
         <View style={styles.pickerContainer}>
-          <Text style={styles.label}>{t('anchorTypeOptional')}</Text>
-          <Text style={styles.hint}>
+          <Text style={[styles.label, {color: colors.text}]}>{t('anchorTypeOptional')}</Text>
+          <Text style={[styles.hint, {color: colors.textSecondary}]}>
             {t('tapToSelectAnchorType')}
           </Text>
           
           <TouchableOpacity
             style={[
               styles.anchorSelectorButton,
-              anchorType && styles.anchorSelectorButtonSelected,
+              {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa', borderColor: colors.border},
+              anchorType && {borderColor: colors.primary, backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff'},
             ]}
             onPress={() => setAnchorModalVisible(true)}>
             {anchorType ? (
               <View style={styles.anchorSelectorContent}>
-                <Text style={styles.anchorSelectorIcon}>
-                  {getAnchorIconDetailed(anchorType)}
-                </Text>
-                <Text style={styles.anchorSelectorText}>
+                <Image
+                  source={getAnchorImageSource(anchorType)}
+                  style={styles.anchorSelectorImage}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.anchorSelectorText, {color: colors.text}]}>
                   {getAnchorTypeInfo(anchorType).name}
                 </Text>
               </View>
             ) : (
-              <Text style={styles.anchorSelectorPlaceholder}>
+              <Text style={[styles.anchorSelectorPlaceholder, {color: colors.textTertiary}]}>
                 {t('tapToSelectAnchorType')}
               </Text>
             )}
-            <Text style={styles.anchorSelectorArrow}>›</Text>
+            <Text style={[styles.anchorSelectorArrow, {color: colors.textSecondary}]}>›</Text>
           </TouchableOpacity>
 
           {anchorType && (
-            <View style={styles.anchorTypeInfo}>
-              <Text style={styles.anchorTypeDescription}>
-                {getAnchorTypeInfo(anchorType).description}
+            <View style={[styles.anchorTypeInfo, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+              <Text style={[styles.anchorTypeDescription, {color: colors.textSecondary}]}>
+                {getAnchorDescription(anchorType, t)}
               </Text>
             </View>
           )}
@@ -746,20 +1073,20 @@ export const AnchoringSessionScreen: React.FC = () => {
       </View>
 
       {calculationResult && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('calculationResults')}</Text>
-          <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>{t('totalVerticalDistance')}:</Text>
-            <Text style={styles.resultValue}>
+        <View style={[styles.section, {backgroundColor: colors.surface}]}>
+          <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('calculationResults')}</Text>
+          <View style={[styles.resultBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+            <Text style={[styles.resultLabel, {color: colors.textSecondary}]}>{t('totalVerticalDistance')}:</Text>
+            <Text style={[styles.resultValue, {color: colors.text}]}>
               {formatLength(
                 calculationResult.totalVerticalDistance,
                 unitSystem,
               )}
             </Text>
           </View>
-          <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>{t('recommendedRodeLength')}:</Text>
-            <Text style={[styles.resultValue, styles.highlight]}>
+          <View style={[styles.resultBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+            <Text style={[styles.resultLabel, {color: colors.textSecondary}]}>{t('recommendedRodeLength')}:</Text>
+            <Text style={[styles.resultValue, {color: colors.primary}]}>
               {formatLength(
                 calculationResult.recommendedRodeLength,
                 unitSystem,
@@ -767,8 +1094,8 @@ export const AnchoringSessionScreen: React.FC = () => {
             </Text>
           </View>
           {calculationResult.warning && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>
+            <View style={[styles.warningBox, {backgroundColor: effectiveTheme === 'dark' ? '#3d2f00' : '#fff3cd'}]}>
+              <Text style={[styles.warningText, {color: effectiveTheme === 'dark' ? '#ffb300' : '#856404'}]}>
                 ⚠️ {calculationResult.warning}
               </Text>
             </View>
@@ -776,8 +1103,8 @@ export const AnchoringSessionScreen: React.FC = () => {
         </View>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('swingRadiusAlarm')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('swingRadiusAlarm')}</Text>
 
         <InputField
           label={t('actualRodeDeployed')}
@@ -798,13 +1125,13 @@ export const AnchoringSessionScreen: React.FC = () => {
         />
 
         {swingRadiusResult && (
-          <View style={styles.resultBox}>
-            <Text style={styles.resultLabel}>{t('swingRadius')}:</Text>
-            <Text style={styles.resultValue}>
+          <View style={[styles.resultBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+            <Text style={[styles.resultLabel, {color: colors.textSecondary}]}>{t('swingRadius')}:</Text>
+            <Text style={[styles.resultValue, {color: colors.text}]}>
               {formatLength(swingRadiusResult.radius, unitSystem)}
             </Text>
-            <Text style={styles.resultLabel}>{t('swingDiameter')}:</Text>
-            <Text style={styles.resultValue}>
+            <Text style={[styles.resultLabel, {color: colors.textSecondary}]}>{t('swingDiameter')}:</Text>
+            <Text style={[styles.resultValue, {color: colors.text}]}>
               {formatLength(swingRadiusResult.diameter, unitSystem)}
             </Text>
           </View>
@@ -817,16 +1144,30 @@ export const AnchoringSessionScreen: React.FC = () => {
         />
 
         {alarmState.anchorPoint && (
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
+          <View style={[styles.infoBox, {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff'}]}>
+            <Text style={[styles.infoText, {color: effectiveTheme === 'dark' ? '#0A84FF' : '#004085'}]}>
               {t('anchorPointSet')}:{' '}
               {alarmState.anchorPoint.latitude.toFixed(6)},{' '}
               {alarmState.anchorPoint.longitude.toFixed(6)}
             </Text>
+            <View style={styles.anchorPointButtons}>
+              <TouchableOpacity
+                style={[styles.mapButton, {backgroundColor: colors.primary, flex: 1, marginRight: 8}]}
+                onPress={handleShowAnchorPointOnMap}
+                activeOpacity={0.7}>
+                <Text style={[styles.mapButtonText, {color: '#fff'}]}>📍 {t('viewOnMap')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.stopAnchoringButton, {backgroundColor: colors.error, flex: 1}]}
+                onPress={handleStopAnchoring}
+                activeOpacity={0.7}>
+                <Text style={[styles.mapButtonText, {color: '#fff'}]}>⛔ {t('stopAnchoring')}</Text>
+              </TouchableOpacity>
+            </View>
             {anchorStartTime && (
-              <View style={styles.timerBox}>
-                <Text style={styles.timerLabel}>⏱️ {t('anchoredFor')}:</Text>
-                <Text style={styles.timerValue}>
+              <View style={[styles.timerBox, {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary}]}>
+                <Text style={[styles.timerLabel, {color: effectiveTheme === 'dark' ? '#B0B0B0' : '#004085'}]}>⏱️ {t('anchoredFor')}:</Text>
+                <Text style={[styles.timerValue, {color: colors.primary}]}>
                   {formatElapsedTime(elapsedTime)}
                 </Text>
               </View>
@@ -857,19 +1198,19 @@ export const AnchoringSessionScreen: React.FC = () => {
         />
 
         {alarmState.isActive && (
-          <View style={styles.alarmStatus}>
-            <Text style={styles.alarmStatusText}>
+          <View style={[styles.alarmStatus, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f0f0f0'}]}>
+            <Text style={[styles.alarmStatusText, {color: colors.text}]}>
               {t('distanceFromAnchor')}:{' '}
               {formatLength(alarmState.distanceFromAnchor, unitSystem)}
             </Text>
             {gpsAccuracyCheck.warning && (
-              <Text style={styles.warningText}>
+              <Text style={[styles.warningText, {color: colors.warning}]}>
                 {gpsAccuracyCheck.warning}
               </Text>
             )}
             {alarmState.isAlarmTriggered && (
-              <View style={styles.alarmTriggered}>
-                <Text style={styles.alarmTriggeredText}>
+              <View style={[styles.alarmTriggered, {backgroundColor: effectiveTheme === 'dark' ? '#4a1f24' : '#f8d7da'}]}>
+                <Text style={[styles.alarmTriggeredText, {color: colors.error}]}>
                   ⚠️ {t('alarmTriggered')}
                 </Text>
               </View>
@@ -878,63 +1219,81 @@ export const AnchoringSessionScreen: React.FC = () => {
         )}
 
         {swingRadiusResult && alarmState.anchorPoint && (
-          <>
-            <SwingCircleView
-              anchorPoint={alarmState.anchorPoint}
-              currentPosition={alarmState.currentPosition}
-              swingRadius={
-                unitSystem === UnitSystem.METRIC
-                  ? swingRadiusResult.radius
-                  : convertLength(
-                      swingRadiusResult.radius,
-                      UnitSystem.IMPERIAL,
-                      UnitSystem.METRIC,
-                    )
-              }
-              unitSystem={unitSystem}
-            />
-            <Button
-              title={`📊 ${t('openMonitorView')}`}
+          <SwingCircleView
+            anchorPoint={alarmState.anchorPoint}
+            currentPosition={alarmState.currentPosition}
+            swingRadius={
+              unitSystem === UnitSystem.METRIC
+                ? swingRadiusResult.radius
+                : convertLength(
+                    swingRadiusResult.radius,
+                    UnitSystem.IMPERIAL,
+                    UnitSystem.METRIC,
+                  )
+            }
+            unitSystem={unitSystem}
+          />
+        )}
+        {alarmState.anchorPoint && (
+          <View style={styles.monitorButtonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.monitorButton,
+                {
+                  backgroundColor: colors.primary + '15',
+                  borderColor: colors.primary,
+                },
+              ]}
               onPress={() => {
+                if (!alarmState.anchorPoint) {
+                  Alert.alert(t('error'), t('pleaseSetAnchorPoint'));
+                  return;
+                }
                 (navigation as any).navigate('MonitorView', {
                   anchorPoint: alarmState.anchorPoint,
                   swingRadius:
-                    unitSystem === UnitSystem.METRIC
-                      ? swingRadiusResult.radius
-                      : convertLength(
-                          swingRadiusResult.radius,
-                          UnitSystem.IMPERIAL,
-                          UnitSystem.METRIC,
-                        ),
+                    swingRadiusResult
+                      ? unitSystem === UnitSystem.METRIC
+                        ? swingRadiusResult.radius
+                        : convertLength(
+                            swingRadiusResult.radius,
+                            UnitSystem.IMPERIAL,
+                            UnitSystem.METRIC,
+                          )
+                      : undefined,
                   unitSystem,
                   dragThreshold: alarmState.dragThreshold,
+                  anchorStartTime: anchorStartTime ?? undefined,
                 });
               }}
-              variant="secondary"
-              fullWidth
-            />
-          </>
+              activeOpacity={0.7}>
+              <Text style={[styles.monitorButtonText, {color: colors.primary}]}>
+                📊 {t('openMonitorView')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('sessionNotes')}</Text>
-        <Text style={styles.label}>{t('notesOptional')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('sessionNotes')}</Text>
+        <Text style={[styles.label, {color: colors.text}]}>{t('notesOptional')}</Text>
         <TextInput
-          style={styles.notesInput}
+          style={[styles.notesInput, {backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text}]}
           value={notes}
           onChangeText={setNotes}
           placeholder={t('notesPlaceholder')}
+          placeholderTextColor={colors.textTertiary}
           multiline
           numberOfLines={4}
           textAlignVertical="top"
         />
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, {color: colors.textSecondary}]}>
           {t('notesHint')}
         </Text>
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={t('saveSession')}
           onPress={handleSaveSession}
@@ -943,24 +1302,107 @@ export const AnchoringSessionScreen: React.FC = () => {
         />
       </View>
     </ScrollView>
+    
+    {/* Safe area background to prevent content showing through */}
+    {insets.bottom > 0 && (
+      <View style={[styles.safeAreaBackground, {height: insets.bottom, backgroundColor: colors.background}]} />
+    )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  safeAreaBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 999,
+  },
+  monitorButtonContainer: {
+    marginTop: 12,
+  },
+  monitorButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    borderWidth: 1.5,
+    width: '100%',
+  },
+  monitorButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   section: {
     padding: 16,
-    backgroundColor: '#fff',
     marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    color: '#333',
+  },
+  sectionHeaderWithButtons: {
+    marginBottom: 16,
+  },
+  actionButtonsContainer: {
+    marginTop: 12,
+    gap: 8,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  actionButtonFullWidth: {
+    width: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
   row: {
     flexDirection: 'row',
@@ -971,8 +1413,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 12,
-    color: '#666',
-    marginTop: -12,
+    marginTop: 8,
     marginBottom: 12,
   },
   pickerContainer: {
@@ -982,7 +1423,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 6,
-    color: '#333',
   },
   pickerWrapper: {
     flexDirection: 'row',
@@ -992,21 +1432,17 @@ const styles = StyleSheet.create({
   bottomTypeInfo: {
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#f0f0f0',
     borderRadius: 8,
   },
   bottomTypeSuitability: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   bottomTypeNotes: {
     fontSize: 12,
-    color: '#666',
   },
   recommendationBox: {
-    backgroundColor: '#e7f3ff',
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
@@ -1015,151 +1451,197 @@ const styles = StyleSheet.create({
   recommendationTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#004085',
     marginBottom: 4,
   },
   recommendationText: {
     fontSize: 12,
-    color: '#004085',
   },
   anchorTypeInfo: {
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#f0f0f0',
     borderRadius: 8,
   },
   anchorTypeDescription: {
     fontSize: 12,
-    color: '#666',
   },
   anchorSelectorButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8f9fa',
     borderWidth: 2,
-    borderColor: '#e0e0e0',
     borderRadius: 12,
     padding: 16,
     marginTop: 8,
-  },
-  anchorSelectorButtonSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#e7f3ff',
   },
   anchorSelectorContent: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  anchorSelectorIcon: {
-    fontSize: 24,
+  anchorSelectorImage: {
+    width: 24,
+    height: 24,
     marginRight: 12,
   },
   anchorSelectorText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
   },
   anchorSelectorPlaceholder: {
     fontSize: 16,
-    color: '#999',
     flex: 1,
   },
   anchorSelectorArrow: {
     fontSize: 24,
-    color: '#666',
   },
   resultBox: {
-    backgroundColor: '#f0f0f0',
     padding: 16,
     borderRadius: 8,
     marginBottom: 12,
   },
   resultLabel: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 4,
   },
   resultValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 12,
   },
-  highlight: {
-    color: '#007AFF',
-  },
   warningBox: {
-    backgroundColor: '#fff3cd',
     padding: 12,
     borderRadius: 8,
     marginTop: 8,
   },
   warningText: {
-    color: '#856404',
     fontSize: 14,
   },
   infoBox: {
-    backgroundColor: '#e7f3ff',
     padding: 12,
     borderRadius: 8,
     marginVertical: 8,
   },
   infoText: {
     fontSize: 12,
-    color: '#004085',
+    marginBottom: 8,
+  },
+  anchorPointButtons: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  mapButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopAnchoringButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   alarmStatus: {
     marginTop: 16,
     padding: 12,
-    backgroundColor: '#f0f0f0',
     borderRadius: 8,
   },
   alarmStatusText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
   },
   alarmTriggered: {
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#f8d7da',
     borderRadius: 8,
   },
   alarmTriggeredText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#721c24',
   },
   notesInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
     minHeight: 100,
-    backgroundColor: '#fff',
-    color: '#333',
   },
   timerBox: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: '#e7f3ff',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#007AFF',
   },
   timerLabel: {
     fontSize: 12,
-    color: '#004085',
     marginBottom: 4,
     fontWeight: '600',
   },
   timerValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#007AFF',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+  },
+  dropdownArrow: {
+    fontSize: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    borderRadius: 12,
+    padding: 16,
+    width: '80%',
+    maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modalOptionText: {
+    fontSize: 16,
+  },
+  modalOptionCheck: {
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
 

@@ -19,9 +19,32 @@ export async function requestLocationPermission(): Promise<boolean> {
  */
 export async function getCurrentPosition(): Promise<AppLocation> {
   try {
-    const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
+    // First try to get last known position (faster, works even if GPS is off)
+    const lastKnownPosition = await Location.getLastKnownPositionAsync({
+      maxAge: 60000, // Use if less than 1 minute old
     });
+    
+    if (lastKnownPosition && 
+        lastKnownPosition.coords.latitude !== 0 && 
+        lastKnownPosition.coords.longitude !== 0) {
+      console.log('Using last known position');
+      return {
+        latitude: lastKnownPosition.coords.latitude,
+        longitude: lastKnownPosition.coords.longitude,
+        accuracy: lastKnownPosition.coords.accuracy || undefined,
+        timestamp: lastKnownPosition.timestamp,
+      };
+    }
+    
+    // If no last known position, get fresh position
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced, // Use Balanced for faster response
+      timeout: 10000, // 10 second timeout
+    });
+
+    if (location.coords.latitude === 0 && location.coords.longitude === 0) {
+      throw new Error('Received invalid location coordinates (0,0)');
+    }
 
     return {
       latitude: location.coords.latitude,

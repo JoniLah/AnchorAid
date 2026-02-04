@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {AppSettings, AnchoringSession, UnitSystem, AlarmSoundType} from '../types';
+import {AppSettings, AnchoringSession, UnitSystem, AlarmSoundType, RodeType} from '../types';
 
 const SETTINGS_KEY = '@anchor_aid:settings';
 const SESSIONS_KEY = '@anchor_aid:sessions';
@@ -11,19 +11,27 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultDragThreshold: 30,
   defaultUpdateInterval: 5,
   defaultSmoothingWindow: 5,
+  defaultBowHeight: undefined,
+  defaultSafetyMargin: undefined,
+  defaultChainLength: undefined,
+  defaultTotalRodeAvailable: undefined,
+  defaultRodeType: RodeType.ROPE,
   language: 'en',
   alarmSoundType: AlarmSoundType.DEFAULT,
   alarmVolume: 1.0,
+  theme: 'system',
 };
 
 /**
- * Load app settings from storage
+ * Load app settings from storage.
+ * Merges with DEFAULT_SETTINGS so older persisted data missing new keys never causes crashes.
  */
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const data = await AsyncStorage.getItem(SETTINGS_KEY);
     if (data) {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data) as Partial<AppSettings>;
+      return { ...DEFAULT_SETTINGS, ...parsed };
     }
     return DEFAULT_SETTINGS;
   } catch (error) {
@@ -87,3 +95,29 @@ export async function deleteSession(sessionId: string): Promise<void> {
   }
 }
 
+/**
+ * Generic function to load data from storage
+ */
+export async function loadData<T>(key: string): Promise<T | null> {
+  try {
+    const data = await AsyncStorage.getItem(key);
+    if (data) {
+      return JSON.parse(data) as T;
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error loading data for key ${key}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Generic function to save data to storage
+ */
+export async function saveData<T>(key: string, data: T): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error(`Error saving data for key ${key}:`, error);
+  }
+}

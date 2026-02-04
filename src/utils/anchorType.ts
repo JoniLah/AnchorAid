@@ -532,6 +532,35 @@ export const ANCHOR_TYPE_INFO: Record<AnchorType, AnchorTypeInfo> = {
       holding: 'Low and unreliable, hooks onto objects'
     },
   },
+  [AnchorType.MUSHROOM]: {
+    type: AnchorType.MUSHROOM,
+    name: 'Mushroom',
+    category: 'other',
+    description: 'Heavy, dome-shaped anchor designed for permanent moorings. Excellent holding power in mud and soft bottoms. Buries itself deeply for maximum security.',
+    detailedInfo: {
+      pros: [
+        'Exceptional holding power in mud and soft bottoms',
+        'Designed to bury itself deeply',
+        'Excellent for permanent moorings',
+        'Very reliable once set',
+        'No moving parts, extremely durable',
+        'Self-burying design'
+      ],
+      cons: [
+        'Extremely heavy (typically 10x weight of boat anchor)',
+        'Designed for permanent use, not practical for temporary anchoring',
+        'Very difficult to retrieve',
+        'Requires specialized equipment to deploy',
+        'Not suitable for hard bottoms or rock',
+        'Expensive due to weight'
+      ],
+      priceRange: 'very-premium',
+      bestFor: ['Permanent moorings', 'Mud bottoms', 'Soft bottoms', 'Long-term anchoring', 'Marinas'],
+      weight: 'Very heavy',
+      setting: 'Self-burying in soft bottoms',
+      holding: 'Exceptional in mud/soft bottoms (designed for permanent holding)'
+    },
+  },
   [AnchorType.OTHER]: {
     type: AnchorType.OTHER,
     name: 'Other',
@@ -569,6 +598,7 @@ export function getRecommendedAnchorsForBottom(
       ];
     case BottomType.MUD:
       return [
+        AnchorType.MUSHROOM,
         AnchorType.PLOW,
         AnchorType.DELTA,
         AnchorType.DANFORTH,
@@ -631,6 +661,8 @@ export function getRecommendedAnchorsForBottom(
 export function getAnchorTypeInfo(type: AnchorType): AnchorTypeInfo {
   return ANCHOR_TYPE_INFO[type];
 }
+
+// getAnchorDescription moved to anchorDescription.ts to avoid circular dependency
 
 /**
  * Check if anchor type is recommended for bottom type

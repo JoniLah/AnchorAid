@@ -60,7 +60,128 @@ export const BOTTOM_TYPE_INFO: Record<BottomType, BottomTypeInfo> = {
   },
 };
 
-export function getBottomTypeInfo(type: BottomType): BottomTypeInfo {
-  return BOTTOM_TYPE_INFO[type];
+/**
+ * Get translated bottom type name
+ * 
+ * @param type - The bottom type
+ * @param t - Optional translation function. If provided, translations will be used. Otherwise, English is returned.
+ */
+export function getBottomTypeName(
+  type: BottomType,
+  t?: (key: any) => string
+): string {
+  if (t && typeof t === 'function') {
+    try {
+      switch (type) {
+        case BottomType.SAND:
+          return t('bottomTypeSand');
+        case BottomType.MUD:
+          return t('bottomTypeMud');
+        case BottomType.CLAY:
+          return t('bottomTypeClay');
+        case BottomType.GRASS_WEEDS:
+          return t('bottomTypeGrassWeeds');
+        case BottomType.ROCK:
+          return t('bottomTypeRock');
+        case BottomType.CORAL:
+          return t('bottomTypeCoral');
+        case BottomType.UNKNOWN:
+          return t('bottomTypeUnknown');
+        default:
+          return BOTTOM_TYPE_INFO[type]?.name || 'Unknown';
+      }
+    } catch (error) {
+      // Translation failed, fall through to English
+    }
+  }
+  // Fallback to English
+  return BOTTOM_TYPE_INFO[type]?.name || 'Unknown';
+}
+
+/**
+ * Get translated suitability rating
+ * 
+ * @param suitability - The suitability rating ('Excellent', 'Good', 'Fair', 'Poor', 'Unknown')
+ * @param t - Optional translation function. If provided, translations will be used. Otherwise, English is returned.
+ */
+export function getSuitabilityRating(
+  suitability: string,
+  t?: (key: any) => string
+): string {
+  if (t && typeof t === 'function') {
+    try {
+      const suitabilityLower = suitability.toLowerCase();
+      switch (suitabilityLower) {
+        case 'excellent':
+          return t('excellent');
+        case 'good':
+          return t('good');
+        case 'fair':
+          return t('fair');
+        case 'poor':
+          return t('poor');
+        case 'unknown':
+          return t('bottomTypeUnknown');
+        default:
+          return suitability;
+      }
+    } catch (error) {
+      // Translation failed, fall through to English
+    }
+  }
+  // Fallback to English
+  return suitability;
+}
+
+/**
+ * Get bottom type info with optional translation
+ * 
+ * @param type - The bottom type
+ * @param t - Optional translation function. If provided, notes will be translated. Otherwise, English is returned.
+ */
+export function getBottomTypeInfo(
+  type: BottomType,
+  t?: (key: any) => string
+): BottomTypeInfo {
+  const info = BOTTOM_TYPE_INFO[type];
+  
+  // Return translated notes if translation function is provided
+  if (t && typeof t === 'function') {
+    try {
+      let notesKey: string;
+      switch (type) {
+        case BottomType.SAND:
+          notesKey = 'bottomTypeSandNote';
+          break;
+        case BottomType.MUD:
+          notesKey = 'bottomTypeMudNote';
+          break;
+        case BottomType.CLAY:
+          notesKey = 'bottomTypeClayNote';
+          break;
+        case BottomType.GRASS_WEEDS:
+          notesKey = 'bottomTypeGrassWeedsNote';
+          break;
+        case BottomType.ROCK:
+          notesKey = 'bottomTypeRockNote';
+          break;
+        case BottomType.CORAL:
+          notesKey = 'bottomTypeCoralNote';
+          break;
+        case BottomType.UNKNOWN:
+          notesKey = 'bottomTypeUnknownNote';
+          break;
+        default:
+          return info;
+      }
+      return {
+        ...info,
+        notes: t(notesKey),
+      };
+    } catch (error) {
+      // Translation failed, fall through to default
+    }
+  }
+  return info;
 }
 

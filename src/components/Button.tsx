@@ -1,5 +1,6 @@
 import React from 'react';
 import {TouchableOpacity, Text, StyleSheet, ActivityIndicator} from 'react-native';
+import {useTheme} from '../theme/ThemeContext';
 
 interface ButtonProps {
   title: string;
@@ -18,11 +19,31 @@ export const Button: React.FC<ButtonProps> = ({
   loading = false,
   fullWidth = false,
 }) => {
+  const {colors} = useTheme();
+  
+  const getButtonStyle = () => {
+    if (variant === 'primary') {
+      return {backgroundColor: colors.buttonPrimary};
+    } else if (variant === 'secondary') {
+      return {backgroundColor: colors.buttonSecondary};
+    } else if (variant === 'danger') {
+      return {backgroundColor: colors.error};
+    }
+    return {backgroundColor: colors.buttonPrimary};
+  };
+
+  const getTextColor = () => {
+    if (variant === 'primary' || variant === 'danger') {
+      return colors.buttonText;
+    }
+    return colors.buttonSecondaryText;
+  };
+
   return (
     <TouchableOpacity
       style={[
         styles.button,
-        styles[variant],
+        getButtonStyle(),
         disabled && styles.disabled,
         fullWidth && styles.fullWidth,
       ]}
@@ -30,9 +51,9 @@ export const Button: React.FC<ButtonProps> = ({
       disabled={disabled || loading}
       activeOpacity={0.7}>
       {loading ? (
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color={colors.buttonText} />
       ) : (
-        <Text style={[styles.text, styles[`${variant}Text`]]}>{title}</Text>
+        <Text style={[styles.text, {color: getTextColor()}]}>{title}</Text>
       )}
     </TouchableOpacity>
   );
@@ -47,15 +68,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
   },
-  primary: {
-    backgroundColor: '#007AFF',
-  },
-  secondary: {
-    backgroundColor: '#6c757d',
-  },
-  danger: {
-    backgroundColor: '#dc3545',
-  },
   disabled: {
     opacity: 0.5,
   },
@@ -65,15 +77,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  primaryText: {
-    color: '#fff',
-  },
-  secondaryText: {
-    color: '#fff',
-  },
-  dangerText: {
-    color: '#fff',
   },
 });
 

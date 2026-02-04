@@ -18,11 +18,13 @@ import {loadSessions} from '../services/storage';
 import {AnchoringSession} from '../types';
 import {formatLength, getLengthUnit} from '../utils/units';
 import {loadInterstitialAd} from '../services/adMob';
+import {useTheme} from '../theme/ThemeContext';
 import {t} from '../i18n';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const {colors} = useTheme();
   const [recentSessions, setRecentSessions] = useState<AnchoringSession[]>([]);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export const HomeScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
     <ScrollView 
       style={styles.scrollView}
       contentContainerStyle={{paddingBottom: insets.bottom + 80}}>
@@ -72,9 +74,9 @@ export const HomeScreen: React.FC = () => {
 
       <SafetyDisclaimer />
 
-      <View style={styles.section}>
+      <View style={styles.sectionButtons}>
         <TouchableOpacity
-          style={styles.primaryActionButton}
+          style={[styles.primaryActionButton, {backgroundColor: colors.primary}]}
           onPress={async () => {
             // Show interstitial ad before navigating
             try {
@@ -100,27 +102,27 @@ export const HomeScreen: React.FC = () => {
       {recentSessions.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t('recentSessions')}</Text>
+            <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('recentSessions')}</Text>
             <TouchableOpacity
               onPress={() => (navigation as any).navigate('SessionHistory')}
               activeOpacity={0.7}>
-              <Text style={styles.viewAllText}>{t('viewAll')} →</Text>
+              <Text style={[styles.viewAllText, {color: colors.primary}]}>{t('viewAll')} →</Text>
             </TouchableOpacity>
           </View>
           {recentSessions.map(session => (
             <TouchableOpacity
               key={session.id}
-              style={styles.sessionCard}
+              style={[styles.sessionCard, {backgroundColor: colors.card, borderColor: colors.border}]}
               onPress={() =>
                 (navigation as any).navigate('AnchoringSession', {
                   sessionId: session.id,
                 })
               }>
-              <Text style={styles.sessionDate}>
+              <Text style={[styles.sessionDate, {color: colors.text}]}>
                 {formatDate(session.timestamp)}
               </Text>
               {session.recommendedRodeLength && (
-                <Text style={styles.sessionInfo}>
+                <Text style={[styles.sessionInfo, {color: colors.textSecondary}]}>
                   {t('recommended')}: {formatLength(
                     session.recommendedRodeLength,
                     session.unitSystem,
@@ -128,7 +130,7 @@ export const HomeScreen: React.FC = () => {
                 </Text>
               )}
               {session.location && (
-                <Text style={styles.sessionLocation}>
+                <Text style={[styles.sessionLocation, {color: colors.textTertiary}]}>
                   📍 {session.location.latitude.toFixed(4)}, {session.location.longitude.toFixed(4)}
                 </Text>
               )}
@@ -137,34 +139,50 @@ export const HomeScreen: React.FC = () => {
         </View>
       )}
 
-      <View style={styles.section}>
+      <View style={styles.sectionButtons}>
         <TouchableOpacity
-          style={styles.mapButton}
+          style={[styles.mapButton, {backgroundColor: colors.card, borderColor: colors.primary}]}
           onPress={() => (navigation as any).navigate('BottomTypeMap')}
           activeOpacity={0.8}>
           <View style={styles.mapButtonContent}>
             <Text style={styles.mapButtonIcon}>🗺️</Text>
             <View style={styles.mapButtonTextContainer}>
-              <Text style={styles.mapButtonTitle}>{t('bottomTypeMap')}</Text>
-              <Text style={styles.mapButtonSubtitle}>{t('bottomTypeMapSubtitle')}</Text>
+              <Text style={[styles.mapButtonTitle, {color: colors.primary}]}>{t('bottomTypeMap')}</Text>
+              <Text style={[styles.mapButtonSubtitle, {color: colors.textSecondary}]}>{t('bottomTypeMapSubtitle')}</Text>
             </View>
-            <Text style={styles.buttonArrow}>›</Text>
+            <Text style={[styles.buttonArrow, {color: colors.primary, opacity: 0.7}]}>›</Text>
           </View>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.sectionButtons}>
         <TouchableOpacity
-          style={styles.guideButton}
+          style={[styles.guideButton, {backgroundColor: colors.card, borderColor: colors.success}]}
           onPress={() => (navigation as any).navigate('AnchoringTechnique')}
           activeOpacity={0.8}>
           <View style={styles.mapButtonContent}>
             <Text style={styles.mapButtonIcon}>📚</Text>
             <View style={styles.mapButtonTextContainer}>
-              <Text style={styles.guideButtonTitle}>{t('anchoringTechnique')}</Text>
-              <Text style={styles.mapButtonSubtitle}>{t('howToAnchorSubtitle')}</Text>
+              <Text style={[styles.guideButtonTitle, {color: colors.success}]}>{t('anchoringTechnique')}</Text>
+              <Text style={[styles.mapButtonSubtitle, {color: colors.textSecondary}]}>{t('howToAnchorSubtitle')}</Text>
             </View>
-            <Text style={styles.buttonArrow}>›</Text>
+            <Text style={[styles.buttonArrow, {color: colors.success, opacity: 0.7}]}>›</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.sectionButtons}>
+        <TouchableOpacity
+          style={[styles.guideButton, {backgroundColor: colors.card, borderColor: colors.primary}]}
+          onPress={() => (navigation as any).navigate('AnchorGuide')}
+          activeOpacity={0.8}>
+          <View style={styles.mapButtonContent}>
+            <Text style={styles.mapButtonIcon}>⚓</Text>
+            <View style={styles.mapButtonTextContainer}>
+              <Text style={[styles.guideButtonTitle, {color: colors.primary}]}>{t('anchorGuide')}</Text>
+              <Text style={[styles.mapButtonSubtitle, {color: colors.textSecondary}]}>{t('anchorTypeGuide')}</Text>
+            </View>
+            <Text style={[styles.buttonArrow, {color: colors.primary, opacity: 0.7}]}>›</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -174,6 +192,11 @@ export const HomeScreen: React.FC = () => {
     <View style={[styles.adSection, {paddingBottom: insets.bottom}]}>
       <AdBanner />
     </View>
+    
+    {/* Safe area background to prevent content showing through */}
+    {insets.bottom > 0 && (
+      <View style={[styles.safeAreaBackground, {height: insets.bottom, backgroundColor: colors.background}]} />
+    )}
     </View>
   );
 };
@@ -181,7 +204,6 @@ export const HomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   scrollView: {
     flex: 1,
@@ -227,7 +249,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   section: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  sectionButtons: {
+    paddingHorizontal: 16,
+    paddingVertical: 3,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -238,43 +265,35 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
   },
   viewAllText: {
     fontSize: 14,
-    color: '#007AFF',
     fontWeight: '600',
   },
   sessionCard: {
-    backgroundColor: '#fff',
     padding: 16,
     borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
   },
   sessionDate: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   sessionInfo: {
     fontSize: 12,
-    color: '#666',
     marginTop: 4,
   },
   sessionLocation: {
     fontSize: 11,
-    color: '#999',
     marginTop: 4,
     fontFamily: 'monospace',
   },
   primaryActionButton: {
-    backgroundColor: '#007AFF',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 8,
+    marginBottom: 2,
     shadowColor: '#007AFF',
     shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.3,
@@ -309,12 +328,10 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   mapButton: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 8,
+    marginBottom: 2,
     borderWidth: 2,
-    borderColor: '#007AFF',
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
     shadowOpacity: 0.1,
@@ -335,20 +352,16 @@ const styles = StyleSheet.create({
   mapButtonTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#007AFF',
     marginBottom: 4,
   },
   mapButtonSubtitle: {
     fontSize: 14,
-    color: '#666',
   },
   guideButton: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 8,
+    marginBottom: 2,
     borderWidth: 2,
-    borderColor: '#28a745',
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
     shadowOpacity: 0.1,
@@ -358,12 +371,10 @@ const styles = StyleSheet.create({
   guideButtonTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#28a745',
     marginBottom: 4,
   },
   guideButtonArrow: {
     fontSize: 32,
-    color: '#28a745',
     opacity: 0.7,
   },
   adSection: {
@@ -372,10 +383,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     width: '100%',
-    backgroundColor: '#f5f5f5',
-    borderTopWidth: 1,
-    borderTopColor: '#ddd',
     zIndex: 1000,
+  },
+  safeAreaBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 999,
   },
 });
 

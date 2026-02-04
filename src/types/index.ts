@@ -40,6 +40,7 @@ export enum AnchorType {
   NAVY_STOCKLESS = 'navy_stockless',
   KEDGE = 'kedge',
   GRAPNEL = 'grapnel',
+  MUSHROOM = 'mushroom',
   OTHER = 'other',
 }
 
@@ -81,7 +82,10 @@ export enum AlarmSoundType {
   LOUD = 'loud',
   PERSISTENT = 'persistent',
   SIREN = 'siren',
+  BEEP = 'beep',
 }
+
+export type Theme = 'light' | 'dark' | 'system';
 
 export interface AppSettings {
   unitSystem: UnitSystem;
@@ -89,9 +93,15 @@ export interface AppSettings {
   defaultDragThreshold: number;
   defaultUpdateInterval: number;
   defaultSmoothingWindow: number;
+  defaultBowHeight?: number;
+  defaultSafetyMargin?: number;
+  defaultChainLength?: number;
+  defaultTotalRodeAvailable?: number;
+  defaultRodeType?: RodeType;
   language?: 'en' | 'fi' | 'sv';
   alarmSoundType?: AlarmSoundType;
   alarmVolume?: number; // 0.0 to 1.0
+  theme?: Theme;
 }
 
 export interface AlarmState {

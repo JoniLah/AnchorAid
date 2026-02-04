@@ -60,7 +60,6 @@ module.exports = (() => {
             'Anchor Aid needs your location to monitor anchor drag.',
         },
       ],
-      'expo-maps',
       'expo-notifications',
       [
         'react-native-google-mobile-ads',

@@ -1,8 +1,9 @@
 import React, {useEffect, useState} from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
-import {StatusBar, TouchableOpacity, Text, View, StyleSheet} from 'react-native';
+import {StatusBar, TouchableOpacity, Text, View, StyleSheet, AppState} from 'react-native';
 import {LinearGradient} from 'expo-linear-gradient';
+import {clearLockScreenNotification} from './services/lockScreenNotification';
 import {HomeScreen} from './screens/HomeScreen';
 import {AnchoringSessionScreen} from './screens/AnchoringSessionScreen';
 import {SettingsScreen} from './screens/SettingsScreen';
@@ -16,6 +17,7 @@ import {MonitorViewScreen} from './screens/MonitorViewScreen';
 import {EmergencyContactsScreen} from './screens/EmergencyContactsScreen';
 import {loadSettings} from './services/storage';
 import {setLanguage, t, onLanguageChange} from './i18n';
+import {ThemeProvider, useTheme} from './theme/ThemeContext';
 // Import to register background location task
 import './services/backgroundLocation';
 
@@ -41,22 +43,9 @@ export type RootStackParamList = {
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-// Custom header background with subtle gradient at bottom
-const HeaderBackground: React.FC = () => {
-  return (
-    <View style={styles.headerBackground}>
-      <View style={styles.headerBase} />
-      <LinearGradient
-        colors={['transparent', 'rgba(0, 50, 150, 0.3)']}
-        style={styles.headerGradient}
-        locations={[0.5, 1]}
-      />
-    </View>
-  );
-};
-
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [languageKey, setLanguageKey] = useState(0);
+  const {colors} = useTheme();
 
   useEffect(() => {
     // Load language preference on app start
@@ -73,21 +62,47 @@ const App: React.FC = () => {
       setLanguageKey(prev => prev + 1);
     });
 
-    return unsubscribe;
+    // Clear notifications when app goes to background or closes
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        clearLockScreenNotification();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      subscription.remove();
+      // Clear notifications on unmount
+      clearLockScreenNotification();
+    };
   }, []);
+  
+  // Custom header background with subtle gradient at bottom
+  const HeaderBackground: React.FC = () => {
+    return (
+      <View style={styles.headerBackground}>
+        <View style={[styles.headerBase, {backgroundColor: colors.header}]} />
+        <LinearGradient
+          colors={['transparent', colors.headerGradient]}
+          style={styles.headerGradient}
+          locations={[0.5, 1]}
+        />
+      </View>
+    );
+  };
 
   return (
     <NavigationContainer key={languageKey}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={colors.background === '#121212' ? 'light-content' : 'dark-content'} />
       <Stack.Navigator
-        initialRouteName="Home"
-        screenOptions={{
-          headerBackground: () => <HeaderBackground />,
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-        }}>
+      initialRouteName="Home"
+      screenOptions={{
+        headerBackground: () => <HeaderBackground />,
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}>
         <Stack.Screen
           name="Home"
           component={HomeScreen}
@@ -106,7 +121,11 @@ const App: React.FC = () => {
         <Stack.Screen
           name="AnchoringSession"
           component={AnchoringSessionScreen}
-          options={() => ({title: t('startNewSession')})}
+          options={({route}) => ({
+            title: (route.params as {sessionId?: string} | undefined)?.sessionId
+              ? t('savedSession')
+              : t('startNewSession'),
+          })}
         />
         <Stack.Screen
           name="Settings"
@@ -158,6 +177,14 @@ const App: React.FC = () => {
   );
 };
 
+const App: React.FC = () => {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+};
+
 const styles = StyleSheet.create({
   headerBackground: {
     flex: 1,
@@ -169,7 +196,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#007AFF',
   },
   headerGradient: {
     position: 'absolute',

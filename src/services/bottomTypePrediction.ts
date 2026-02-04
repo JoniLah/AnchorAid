@@ -163,7 +163,7 @@ export async function getBottomTypeRecordsInBounds(
 export async function getBottomTypeHeatmap(
   center: Location,
   radiusKm: number = 5, // 5km radius
-  gridSize: number = 20, // 20x20 grid
+  gridSize: number = 30, // 30x30 grid for better coverage
 ): Promise<Array<{
   latitude: number;
   longitude: number;
@@ -193,10 +193,10 @@ export async function getBottomTypeHeatmap(
         timestamp: Date.now(),
       };
 
-      const prediction = await predictBottomType(gridPoint, 500); // 500m search radius
+      const prediction = await predictBottomType(gridPoint, 1000); // 1km search radius for better coverage
 
-      if (prediction && prediction.confidence > 0.3) {
-        // Only include if confidence is reasonable
+      if (prediction && prediction.confidence > 0.2) {
+        // Lower threshold to show more predictions (20% minimum confidence)
         heatmapData.push({
           latitude: gridPoint.latitude,
           longitude: gridPoint.longitude,

@@ -15,7 +15,10 @@ export interface ScopeInputs {
 /**
  * Calculate recommended anchor rode length based on scope ratio
  */
-export function calculateScope(inputs: ScopeInputs): ScopeCalculationResult {
+export function calculateScope(
+  inputs: ScopeInputs,
+  translate?: (key: string) => string,
+): ScopeCalculationResult {
   const {depth, bowHeight, scopeRatio, safetyMargin, totalRodeAvailable} =
     inputs;
 
@@ -37,9 +40,15 @@ export function calculateScope(inputs: ScopeInputs): ScopeCalculationResult {
   if (totalRodeAvailable !== undefined && totalRodeAvailable > 0) {
     if (recommendedRodeLength > totalRodeAvailable) {
       exceedsAvailable = true;
-      warning = `Recommended length (${recommendedRodeLength.toFixed(
-        1,
-      )}) exceeds available rode (${totalRodeAvailable.toFixed(1)}). Consider increasing scope or using more rode.`;
+      const recommended = recommendedRodeLength.toFixed(1);
+      const available = totalRodeAvailable.toFixed(1);
+      if (translate) {
+        warning = translate('recommendedLengthExceeds')
+          .replace('{recommended}', recommended)
+          .replace('{available}', available);
+      } else {
+        warning = `Recommended length (${recommended}) exceeds available rode (${available}). Consider increasing scope or using more rode.`;
+      }
     }
   }
 

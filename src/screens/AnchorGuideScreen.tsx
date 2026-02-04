@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -14,14 +15,47 @@ import {
   getRecommendedAnchorsForBottom,
   ANCHOR_TYPE_INFO,
 } from '../utils/anchorType';
-import {getAnchorIconDetailed} from '../utils/anchorIcons';
-import {BOTTOM_TYPE_INFO} from '../utils/bottomType';
+import {getAnchorDescription} from '../utils/anchorDescription';
+import {BOTTOM_TYPE_INFO, getBottomTypeName, getSuitabilityRating} from '../utils/bottomType';
 import {Button} from '../components/Button';
+import {useTheme} from '../theme/ThemeContext';
 import {t} from '../i18n';
+
+/**
+ * Get the image source for an anchor type
+ */
+const getAnchorImageSource = (type: AnchorType) => {
+  const imageMap: Record<AnchorType, any> = {
+    [AnchorType.DANFORTH]: require('../../assets/graphics/danforth.png'),
+    [AnchorType.BRUCE]: require('../../assets/graphics/bruce.png'),
+    [AnchorType.PLOW]: require('../../assets/graphics/plow.png'),
+    [AnchorType.DELTA]: require('../../assets/graphics/delta.png'),
+    [AnchorType.ROCNA]: require('../../assets/graphics/rocna.png'),
+    [AnchorType.MANTUS]: require('../../assets/graphics/mantus.png'),
+    [AnchorType.FORTRESS]: require('../../assets/graphics/fortress.png'),
+    [AnchorType.AC14]: require('../../assets/graphics/ac14.png'),
+    [AnchorType.SPADE]: require('../../assets/graphics/spade.png'),
+    [AnchorType.COBRA]: require('../../assets/graphics/cobra.png'),
+    [AnchorType.HERRESHOFF]: require('../../assets/graphics/herreshoff.png'),
+    [AnchorType.NORTHILL]: require('../../assets/graphics/admiralty.png'),
+    [AnchorType.ULTRA]: require('../../assets/graphics/ultra.png'),
+    [AnchorType.EXCEL]: require('../../assets/graphics/excel.png'),
+    [AnchorType.VULCAN]: require('../../assets/graphics/vulcan.png'),
+    [AnchorType.SUPREME]: require('../../assets/graphics/supreme.png'),
+    [AnchorType.STOCKLESS]: require('../../assets/graphics/stockless.png'),
+    [AnchorType.NAVY_STOCKLESS]: require('../../assets/graphics/navy-stockless.png'),
+    [AnchorType.KEDGE]: require('../../assets/graphics/basic-anchor.png'),
+    [AnchorType.GRAPNEL]: require('../../assets/graphics/grapnel.png'),
+    [AnchorType.MUSHROOM]: require('../../assets/graphics/mushroom.png'),
+    [AnchorType.OTHER]: require('../../assets/graphics/other.png'),
+  };
+  return imageMap[type] || require('../../assets/graphics/other.png');
+};
 
 export const AnchorGuideScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const {colors, effectiveTheme} = useTheme();
   const [selectedAnchor, setSelectedAnchor] = useState<AnchorType | null>(null);
   const [selectedBottom, setSelectedBottom] = useState<BottomType | null>(null);
 
@@ -44,21 +78,46 @@ export const AnchorGuideScreen: React.FC = () => {
     return t('fair');
   };
 
+  const getCategoryName = (category: string): string => {
+    try {
+      switch (category) {
+        case 'fluke':
+          return t('categoryFluke');
+        case 'plow':
+          return t('categoryPlow');
+        case 'claw':
+          return t('categoryClaw');
+        case 'modern':
+          return t('categoryModern');
+        case 'traditional':
+          return t('categoryTraditional');
+        case 'other':
+          return t('categoryOther');
+        default:
+          return category;
+      }
+    } catch (error) {
+      console.error('Error translating category:', error);
+      return category;
+    }
+  };
+
   return (
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
     <ScrollView
-      style={styles.container}
+      style={styles.scrollView}
       contentContainerStyle={{paddingBottom: insets.bottom + 16}}>
-      <View style={styles.section}>
-        <Text style={styles.title}>{t('anchorTypeGuide')}</Text>
-        <Text style={styles.subtitle}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.title, {color: colors.text}]}>{t('anchorTypeGuide')}</Text>
+        <Text style={[styles.subtitle, {color: colors.textSecondary}]}>
           {t('learnAboutAnchors')}
         </Text>
       </View>
 
       {/* Quick Reference by Bottom Type */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('quickReferenceByBottom')}</Text>
-        <Text style={styles.sectionDescription}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('quickReferenceByBottom')}</Text>
+        <Text style={[styles.sectionDescription, {color: colors.textSecondary}]}>
           {t('tapBottomTypeToSee')}
         </Text>
         
@@ -68,42 +127,45 @@ export const AnchorGuideScreen: React.FC = () => {
               key={bottom}
               style={[
                 styles.bottomTypeCard,
-                selectedBottom === bottom && styles.bottomTypeCardSelected,
+                {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa', borderColor: colors.border},
+                selectedBottom === bottom && {borderColor: colors.primary, backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff'},
               ]}
               onPress={() => setSelectedBottom(selectedBottom === bottom ? null : bottom)}>
-              <Text style={styles.bottomTypeName}>
-                {BOTTOM_TYPE_INFO[bottom].name}
+              <Text style={[styles.bottomTypeName, {color: colors.text}]}>
+                {getBottomTypeName(bottom, t)}
               </Text>
-              <Text style={styles.bottomTypeSuitability}>
-                {BOTTOM_TYPE_INFO[bottom].suitability}
+              <Text style={[styles.bottomTypeSuitability, {color: colors.textSecondary}]}>
+                {getSuitabilityRating(BOTTOM_TYPE_INFO[bottom].suitability, t)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {selectedBottom && (
-          <View style={styles.recommendationBox}>
-            <Text style={styles.recommendationTitle}>
-              {t('bestAnchorsFor')} {BOTTOM_TYPE_INFO[selectedBottom].name}
+          <View style={[styles.recommendationBox, {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff'}]}>
+            <Text style={[styles.recommendationTitle, {color: effectiveTheme === 'dark' ? '#0A84FF' : '#004085'}]}>
+              {t('bestAnchorsFor')} {getBottomTypeName(selectedBottom)}
             </Text>
             <View style={styles.recommendedAnchorsList}>
               {getRecommendedAnchorsForBottom(selectedBottom).map((anchorType, index) => {
                 const info = getAnchorTypeInfo(anchorType);
                 return (
-                  <View key={anchorType} style={styles.recommendedAnchorItem}>
-                    <Text style={styles.recommendedAnchorIcon}>
-                      {getAnchorIconDetailed(anchorType)}
-                    </Text>
+                  <View key={anchorType} style={[styles.recommendedAnchorItem, {backgroundColor: colors.surface}]}>
+                    <Image
+                      source={getAnchorImageSource(anchorType)}
+                      style={styles.recommendedAnchorImage}
+                      resizeMode="contain"
+                    />
                     <View style={styles.recommendedAnchorInfo}>
-                      <Text style={styles.recommendedAnchorName}>{info.name}</Text>
-                      <Text style={styles.recommendedAnchorDesc}>{info.description}</Text>
+                      <Text style={[styles.recommendedAnchorName, {color: colors.text}]}>{info.name}</Text>
+                      <Text style={[styles.recommendedAnchorDesc, {color: colors.textSecondary}]}>{getAnchorDescription(anchorType, t)}</Text>
                     </View>
-                    <Text style={styles.recommendedRank}>#{index + 1}</Text>
+                    <Text style={[styles.recommendedRank, {color: colors.primary}]}>#{index + 1}</Text>
                   </View>
                 );
               })}
             </View>
-            <Text style={styles.bottomTypeNotes}>
+            <Text style={[styles.bottomTypeNotes, {color: effectiveTheme === 'dark' ? '#B0B0B0' : '#004085', borderTopColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.3)' : '#b3d9ff'}]}>
               {BOTTOM_TYPE_INFO[selectedBottom].notes}
             </Text>
           </View>
@@ -111,8 +173,8 @@ export const AnchorGuideScreen: React.FC = () => {
       </View>
 
       {/* Anchor Types by Category */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('anchorTypesByCategory')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('anchorTypesByCategory')}</Text>
         
         {['fluke', 'plow', 'claw', 'modern', 'traditional', 'other'].map(category => {
           const anchorsInCategory = Object.values(AnchorType).filter(
@@ -123,7 +185,7 @@ export const AnchorGuideScreen: React.FC = () => {
 
           return (
             <View key={category} style={styles.categorySection}>
-              <Text style={styles.categoryTitle}>
+              <Text style={[styles.categoryTitle, {color: colors.text}]}>
                 {category === 'fluke' ? t('flukeAnchors') :
                  category === 'plow' ? t('plowAnchors') :
                  category === 'claw' ? t('clawAnchors') :
@@ -141,25 +203,28 @@ export const AnchorGuideScreen: React.FC = () => {
                       key={anchorType}
                       style={[
                         styles.anchorCard,
-                        isSelected && styles.anchorCardSelected,
+                        {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa', borderColor: colors.border},
+                        isSelected && {borderColor: colors.primary, backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff'},
                       ]}
                       onPress={() => setSelectedAnchor(isSelected ? null : anchorType)}>
                       <View style={styles.anchorCardHeader}>
-                        <Text style={styles.anchorIcon}>
-                          {getAnchorIconDetailed(anchorType)}
-                        </Text>
+                        <Image
+                          source={getAnchorImageSource(anchorType)}
+                          style={styles.anchorImage}
+                          resizeMode="contain"
+                        />
                         <View style={styles.anchorCardTitle}>
-                          <Text style={styles.anchorName}>{info.name}</Text>
-                          <Text style={styles.anchorCategory}>{info.category}</Text>
+                          <Text style={[styles.anchorName, {color: colors.text}]}>{info.name}</Text>
+                          <Text style={[styles.anchorCategory, {color: colors.textSecondary}]}>{getCategoryName(info.category)}</Text>
                         </View>
                       </View>
-                      <Text style={styles.anchorDescription}>{info.description}</Text>
+                      <Text style={[styles.anchorDescription, {color: colors.textSecondary}]}>{getAnchorDescription(anchorType, t)}</Text>
                       
                       {isSelected && info.detailedInfo && (
-                        <View style={styles.anchorDetails}>
+                        <View style={[styles.anchorDetails, {borderTopColor: colors.border}]}>
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('priceRange')}</Text>
-                            <Text style={styles.priceRange}>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('priceRange')}</Text>
+                            <Text style={[styles.priceRange, {color: colors.primary}]}>
                               {info.detailedInfo.priceRange === 'budget' && t('budgetAffordable')}
                               {info.detailedInfo.priceRange === 'moderate' && t('moderateMidRange')}
                               {info.detailedInfo.priceRange === 'premium' && t('premiumHigherCost')}
@@ -168,41 +233,41 @@ export const AnchorGuideScreen: React.FC = () => {
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('bestFor')}</Text>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('bestFor')}</Text>
                             {info.detailedInfo.bestFor.map((use, idx) => (
-                              <Text key={idx} style={styles.bestForItem}>• {use}</Text>
+                              <Text key={idx} style={[styles.bestForItem, {color: colors.text}]}>• {use}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('pros')}</Text>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('pros')}</Text>
                             {info.detailedInfo.pros.map((pro, idx) => (
-                              <Text key={idx} style={styles.proItem}>✓ {pro}</Text>
+                              <Text key={idx} style={[styles.proItem, {color: colors.success}]}>✓ {pro}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('cons')}</Text>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('cons')}</Text>
                             {info.detailedInfo.cons.map((con, idx) => (
-                              <Text key={idx} style={styles.conItem}>✗ {con}</Text>
+                              <Text key={idx} style={[styles.conItem, {color: colors.error}]}>✗ {con}</Text>
                             ))}
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('characteristics')}</Text>
-                            <Text style={styles.characteristicItem}>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('characteristics')}</Text>
+                            <Text style={[styles.characteristicItem, {color: colors.textSecondary}]}>
                               {t('weight')} {info.detailedInfo.weight}
                             </Text>
-                            <Text style={styles.characteristicItem}>
+                            <Text style={[styles.characteristicItem, {color: colors.textSecondary}]}>
                               {t('setting')} {info.detailedInfo.setting}
                             </Text>
-                            <Text style={styles.characteristicItem}>
+                            <Text style={[styles.characteristicItem, {color: colors.textSecondary}]}>
                               {t('holding')} {info.detailedInfo.holding}
                             </Text>
                           </View>
 
                           <View style={styles.detailSection}>
-                            <Text style={styles.detailsTitle}>{t('suitabilityByBottomType')}</Text>
+                            <Text style={[styles.detailsTitle, {color: colors.text}]}>{t('suitabilityByBottomType')}</Text>
                             <View style={styles.suitabilityGrid}>
                               {Object.values(BottomType)
                                 .filter(bt => bt !== BottomType.UNKNOWN)
@@ -210,15 +275,15 @@ export const AnchorGuideScreen: React.FC = () => {
                                   const suitability = getSuitabilityForBottom(anchorType, bottomType);
                                   return (
                                     <View key={bottomType} style={styles.suitabilityItem}>
-                                      <Text style={styles.suitabilityBottom}>
-                                        {BOTTOM_TYPE_INFO[bottomType].name}:
+                                      <Text style={[styles.suitabilityBottom, {color: colors.textSecondary}]}>
+                                        {getBottomTypeName(bottomType)}:
                                       </Text>
                                       <Text
                                         style={[
                                           styles.suitabilityRating,
-                                          suitability === t('excellent') && styles.suitabilityExcellent,
-                                          suitability === t('good') && styles.suitabilityGood,
-                                          suitability === t('fair') && styles.suitabilityFair,
+                                          suitability === t('excellent') && {color: colors.success},
+                                          suitability === t('good') && {color: colors.primary},
+                                          suitability === t('fair') && {color: colors.warning},
                                         ]}>
                                         {suitability}
                                       </Text>
@@ -239,46 +304,46 @@ export const AnchorGuideScreen: React.FC = () => {
       </View>
 
       {/* General Anchoring Tips */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('generalAnchoringTips')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('generalAnchoringTips')}</Text>
         
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>1. {t('scopeRatioTip')}</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>1. {t('scopeRatioTip')}</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             {t('scopeRatioTipText')}
           </Text>
         </View>
 
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>2. {t('settingTheAnchor')}</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>2. {t('settingTheAnchor')}</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             {t('settingTheAnchorText')}
           </Text>
         </View>
 
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>3. {t('bottomTypeConsiderations')}</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>3. {t('bottomTypeConsiderations')}</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             {t('bottomTypeConsiderationsText')}
           </Text>
         </View>
 
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>4. {t('anchorSelection')}</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>4. {t('anchorSelection')}</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             {t('anchorSelectionText')}
           </Text>
         </View>
 
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>5. {t('safetyTips')}</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>5. {t('safetyTips')}</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             {t('safetyTipsText')}
           </Text>
         </View>
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={t('howToAnchorStepByStep')}
           onPress={() => (navigation as any).navigate('AnchoringTechnique')}
@@ -286,7 +351,7 @@ export const AnchorGuideScreen: React.FC = () => {
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={t('back')}
           onPress={() => navigation.goBack()}
@@ -295,39 +360,50 @@ export const AnchorGuideScreen: React.FC = () => {
         />
       </View>
     </ScrollView>
+    
+    {/* Safe area background to prevent content showing through */}
+    {insets.bottom > 0 && (
+      <View style={[styles.safeAreaBackground, {height: insets.bottom, backgroundColor: colors.background}]} />
+    )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  safeAreaBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 999,
   },
   section: {
     padding: 16,
-    backgroundColor: '#fff',
     marginBottom: 8,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 12,
   },
   sectionDescription: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 16,
   },
   bottomTypeGrid: {
@@ -340,28 +416,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: '30%',
     padding: 12,
-    backgroundColor: '#f8f9fa',
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
     alignItems: 'center',
-  },
-  bottomTypeCardSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#e7f3ff',
   },
   bottomTypeName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   bottomTypeSuitability: {
     fontSize: 10,
-    color: '#666',
   },
   recommendationBox: {
-    backgroundColor: '#e7f3ff',
     padding: 16,
     borderRadius: 8,
     marginTop: 8,
@@ -369,7 +436,6 @@ const styles = StyleSheet.create({
   recommendationTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#004085',
     marginBottom: 12,
   },
   recommendedAnchorsList: {
@@ -379,12 +445,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    backgroundColor: '#fff',
     padding: 12,
     borderRadius: 8,
   },
-  recommendedAnchorIcon: {
-    fontSize: 24,
+  recommendedAnchorImage: {
+    width: 32,
+    height: 32,
     marginRight: 12,
   },
   recommendedAnchorInfo: {
@@ -393,27 +459,22 @@ const styles = StyleSheet.create({
   recommendedAnchorName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   recommendedAnchorDesc: {
     fontSize: 12,
-    color: '#666',
   },
   recommendedRank: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#007AFF',
     marginLeft: 8,
   },
   bottomTypeNotes: {
     fontSize: 12,
-    color: '#004085',
     lineHeight: 18,
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#b3d9ff',
   },
   categorySection: {
     marginBottom: 24,
@@ -421,7 +482,6 @@ const styles = StyleSheet.create({
   categoryTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 12,
     textTransform: 'capitalize',
   },
@@ -429,23 +489,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   anchorCard: {
-    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
-  },
-  anchorCardSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#e7f3ff',
   },
   anchorCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
   },
-  anchorIcon: {
-    fontSize: 32,
+  anchorImage: {
+    width: 40,
+    height: 40,
     marginRight: 12,
   },
   anchorCardTitle: {
@@ -454,29 +509,24 @@ const styles = StyleSheet.create({
   anchorName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   anchorCategory: {
     fontSize: 12,
-    color: '#666',
     textTransform: 'capitalize',
   },
   anchorDescription: {
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
   },
   anchorDetails: {
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
   },
   detailsTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 12,
   },
   suitabilityGrid: {
@@ -490,21 +540,11 @@ const styles = StyleSheet.create({
   },
   suitabilityBottom: {
     fontSize: 13,
-    color: '#666',
     flex: 1,
   },
   suitabilityRating: {
     fontSize: 13,
     fontWeight: '600',
-  },
-  suitabilityExcellent: {
-    color: '#28a745',
-  },
-  suitabilityGood: {
-    color: '#007AFF',
-  },
-  suitabilityFair: {
-    color: '#ffc107',
   },
   detailSection: {
     marginBottom: 16,
@@ -512,35 +552,29 @@ const styles = StyleSheet.create({
   priceRange: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#007AFF',
     marginTop: 4,
   },
   bestForItem: {
     fontSize: 13,
-    color: '#333',
     marginTop: 4,
     lineHeight: 20,
   },
   proItem: {
     fontSize: 13,
-    color: '#28a745',
     marginTop: 4,
     lineHeight: 20,
   },
   conItem: {
     fontSize: 13,
-    color: '#dc3545',
     marginTop: 4,
     lineHeight: 20,
   },
   characteristicItem: {
     fontSize: 13,
-    color: '#666',
     marginTop: 4,
     lineHeight: 20,
   },
   tipBox: {
-    backgroundColor: '#f8f9fa',
     padding: 16,
     borderRadius: 8,
     marginBottom: 12,
@@ -548,12 +582,10 @@ const styles = StyleSheet.create({
   tipTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 8,
   },
   tipText: {
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
   },
 });

@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Linking,
+  Platform,
 } from 'react-native';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -14,9 +16,9 @@ import {loadSessions, deleteSession} from '../services/storage';
 import {AnchoringSession, BottomType, AnchorType} from '../types';
 import {formatLength, getLengthUnit} from '../utils/units';
 import {haversineDistance} from '../utils/haversine';
-import {BOTTOM_TYPE_INFO} from '../utils/bottomType';
+import {BOTTOM_TYPE_INFO, getBottomTypeName} from '../utils/bottomType';
 import {getAnchorTypeInfo} from '../utils/anchorType';
-import {t} from '../i18n';
+import {t, getLanguage} from '../i18n';
 
 export const SessionHistoryScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -64,8 +66,10 @@ export const SessionHistoryScreen: React.FC = () => {
   };
 
   const formatDate = (timestamp: number) => {
+    const localeMap = { en: 'en-US', fi: 'fi-FI', sv: 'sv-SE' } as const;
+    const locale = localeMap[getLanguage()] ?? 'en-US';
     const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(locale, {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
@@ -82,10 +86,10 @@ export const SessionHistoryScreen: React.FC = () => {
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return 'Just now';
+    if (days > 0) return days === 1 ? t('timeAgoDay') : t('timeAgoDays').replace('{count}', String(days));
+    if (hours > 0) return hours === 1 ? t('timeAgoHour') : t('timeAgoHours').replace('{count}', String(hours));
+    if (minutes > 0) return minutes === 1 ? t('timeAgoMinute') : t('timeAgoMinutes').replace('{count}', String(minutes));
+    return t('justNow');
   };
 
   const calculateMovement = (session: AnchoringSession): number | null => {
@@ -100,9 +104,21 @@ export const SessionHistoryScreen: React.FC = () => {
     return `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
   };
 
+  const openSessionOnMap = (session: AnchoringSession) => {
+    const point = session.anchorPoint ?? session.location;
+    if (!point) return;
+    const {latitude, longitude} = point;
+    const url =
+      Platform.OS === 'ios'
+        ? `https://maps.apple.com/?q=${latitude},${longitude}&ll=${latitude},${longitude}`
+        : `https://www.google.com/maps?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
   return (
+    <View style={styles.container}>
     <ScrollView
-      style={styles.container}
+      style={styles.scrollView}
       contentContainerStyle={{paddingBottom: insets.bottom + 16}}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -120,7 +136,7 @@ export const SessionHistoryScreen: React.FC = () => {
           <View style={styles.header}>
             <Text style={styles.headerTitle}>{t('sessionHistory')}</Text>
             <Text style={styles.headerSubtitle}>
-              {sessions.length} {sessions.length !== 1 ? 'sessions' : 'session'} saved
+              {sessions.length === 1 ? t('oneSessionSaved') : t('sessionsSaved').replace('{count}', String(sessions.length))}
             </Text>
           </View>
 
@@ -146,103 +162,147 @@ export const SessionHistoryScreen: React.FC = () => {
                 {/* Location Info */}
                 {session.location && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>📍 Location:</Text>
-                    <Text style={styles.infoValue}>{getLocationString(session.location)}</Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>📍 {t('location')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>{getLocationString(session.location)}</Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Movement */}
                 {movement !== null && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>📏 Movement:</Text>
-                    <Text style={[styles.infoValue, movement > (session.dragThreshold || 30) && styles.warningValue]}>
-                      {formatLength(movement, unitSystem)}
-                      {session.dragThreshold && movement > session.dragThreshold && ' ⚠️'}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>📏 {t('movement')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={[styles.infoValue, movement > (session.dragThreshold || 30) && styles.warningValue]}>
+                        {formatLength(movement, unitSystem)}
+                        {session.dragThreshold && movement > session.dragThreshold && ' ⚠️'}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Depth & Scope */}
                 {(session.depth || session.recommendedRodeLength) && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>🌊 Depth:</Text>
-                    <Text style={styles.infoValue}>
-                      {session.depth
-                        ? formatLength(session.depth, unitSystem)
-                        : 'Not recorded'}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>🌊 {t('depth')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {session.depth
+                          ? formatLength(session.depth, unitSystem)
+                          : t('notRecorded')}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {session.recommendedRodeLength && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>📐 Recommended Rode:</Text>
-                    <Text style={styles.infoValue}>
-                      {formatLength(session.recommendedRodeLength, unitSystem)}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>📐 {t('recommendedRode')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {formatLength(session.recommendedRodeLength, unitSystem)}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {session.actualRodeDeployed && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>🔗 Actual Rode:</Text>
-                    <Text style={styles.infoValue}>
-                      {formatLength(session.actualRodeDeployed, unitSystem)}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>🔗 {t('actualRode')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {formatLength(session.actualRodeDeployed, unitSystem)}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Bottom Type & Anchor Type */}
                 {session.bottomType && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>🌍 Bottom Type:</Text>
-                    <Text style={styles.infoValue}>
-                      {BOTTOM_TYPE_INFO[session.bottomType].name}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>🌍 {t('bottomType')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {getBottomTypeName(session.bottomType, t)}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {session.anchorType && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>⚓ Anchor Type:</Text>
-                    <Text style={styles.infoValue}>
-                      {getAnchorTypeInfo(session.anchorType).name}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>⚓ {t('anchorType')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {getAnchorTypeInfo(session.anchorType).name}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Wind Conditions */}
                 {(session.windSpeed || session.gustSpeed) && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>💨 Wind:</Text>
-                    <Text style={styles.infoValue}>
-                      {session.windSpeed
-                        ? `${session.windSpeed} ${unitSystem === 'metric' ? 'm/s' : 'knots'}`
-                        : 'N/A'}
-                      {session.gustSpeed && ` (gusts: ${session.gustSpeed} ${unitSystem === 'metric' ? 'm/s' : 'knots'})`}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>💨 {t('wind')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {session.windSpeed
+                          ? `${session.windSpeed} ${unitSystem === 'metric' ? 'm/s' : 'knots'}`
+                          : t('na')}
+                        {session.gustSpeed && ` (${t('gusts')}: ${session.gustSpeed} ${unitSystem === 'metric' ? 'm/s' : 'knots'})`}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Swing Radius */}
                 {session.swingRadius && (
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>🔄 Swing Radius:</Text>
-                    <Text style={styles.infoValue}>
-                      {formatLength(session.swingRadius, unitSystem)}
-                    </Text>
+                    <View style={styles.infoLabelContainer}>
+                      <Text style={styles.infoLabel}>🔄 {t('swingRadius')}:</Text>
+                    </View>
+                    <View style={styles.infoValueContainer}>
+                      <Text style={styles.infoValue}>
+                        {formatLength(session.swingRadius, unitSystem)}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
                 {/* Notes */}
                 {session.notes && (
                   <View style={styles.notesContainer}>
-                    <Text style={styles.notesLabel}>📝 Notes:</Text>
+                    <Text style={styles.notesLabel}>📝 {t('notes')}:</Text>
                     <Text style={styles.notesText}>{session.notes}</Text>
                   </View>
                 )}
 
-                {/* View Details Button */}
+                {/* View on map & View Details */}
+                {(session.anchorPoint || session.location) && (
+                  <TouchableOpacity
+                    style={styles.mapButton}
+                    onPress={() => openSessionOnMap(session)}
+                    activeOpacity={0.7}>
+                    <Text style={styles.mapButtonText}>📍 {t('viewOnMap')}</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.viewButton}
                   onPress={() =>
@@ -251,7 +311,7 @@ export const SessionHistoryScreen: React.FC = () => {
                     })
                   }
                   activeOpacity={0.7}>
-                  <Text style={styles.viewButtonText}>View Details →</Text>
+                  <Text style={styles.viewButtonText}>{t('viewDetails')} →</Text>
                 </TouchableOpacity>
               </View>
             );
@@ -259,6 +319,12 @@ export const SessionHistoryScreen: React.FC = () => {
         </>
       )}
     </ScrollView>
+    
+    {/* Safe area background to prevent content showing through */}
+    {insets.bottom > 0 && (
+      <View style={[styles.safeAreaBackground, {height: insets.bottom, backgroundColor: '#f5f5f5'}]} />
+    )}
+    </View>
   );
 };
 
@@ -266,6 +332,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  safeAreaBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 999,
   },
   header: {
     backgroundColor: '#007AFF',
@@ -350,19 +427,25 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     marginBottom: 8,
-    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  infoLabelContainer: {
+    width: '50%',
+    paddingRight: 6,
+  },
+  infoValueContainer: {
+    width: '50%',
   },
   infoLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#666',
-    marginRight: 8,
-    minWidth: 120,
+    flexWrap: 'wrap',
   },
   infoValue: {
     fontSize: 14,
     color: '#333',
-    flex: 1,
+    flexWrap: 'wrap',
   },
   warningValue: {
     color: '#dc3545',
@@ -387,8 +470,21 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 20,
   },
-  viewButton: {
+  mapButton: {
     marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#34C759',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  mapButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  viewButton: {
+    marginTop: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     backgroundColor: '#007AFF',

@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 import {View, Text, TouchableOpacity, Modal, StyleSheet} from 'react-native';
 import {t} from '../i18n';
+import {useTheme} from '../theme/ThemeContext';
 
 interface TooltipProps {
   content: string;
@@ -8,12 +9,13 @@ interface TooltipProps {
 
 export const Tooltip: React.FC<TooltipProps> = ({content}) => {
   const [visible, setVisible] = useState(false);
+  const {colors} = useTheme();
 
   return (
     <>
       <TouchableOpacity
         onPress={() => setVisible(true)}
-        style={styles.tooltipButton}
+        style={[styles.tooltipButton, {backgroundColor: colors.textSecondary}]}
         hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
         <Text style={styles.tooltipIcon}>?</Text>
       </TouchableOpacity>
@@ -27,10 +29,10 @@ export const Tooltip: React.FC<TooltipProps> = ({content}) => {
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setVisible(false)}>
-          <View style={styles.tooltipContainer}>
-            <Text style={styles.tooltipText}>{content}</Text>
+          <View style={[styles.tooltipContainer, {backgroundColor: colors.surface}]}>
+            <Text style={[styles.tooltipText, {color: colors.text}]}>{content}</Text>
             <TouchableOpacity
-              style={styles.closeButton}
+              style={[styles.closeButton, {backgroundColor: colors.primary}]}
               onPress={() => setVisible(false)}>
               <Text style={styles.closeButtonText}>{t('gotIt')}</Text>
             </TouchableOpacity>

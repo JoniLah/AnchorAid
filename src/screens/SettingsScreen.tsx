@@ -1,29 +1,149 @@
-import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal} from 'react-native';
+import React, {useState, useEffect, useRef} from 'react';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, PanResponder, Dimensions} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Button} from '../components/Button';
 import {InputField} from '../components/InputField';
 import {SafetyDisclaimer} from '../components/SafetyDisclaimer';
 import {loadSettings, saveSettings} from '../services/storage';
-import {AppSettings, UnitSystem, AlarmSoundType} from '../types';
+import {AppSettings, UnitSystem, AlarmSoundType, Theme, RodeType} from '../types';
 import {setLanguage, t, Language} from '../i18n';
+import {useTheme} from '../theme/ThemeContext';
 import {playAlarmSound, stopAlarmSound, initializeAudio, isAlarmPlaying} from '../services/alarmSound';
+
+// Custom Volume Slider Component
+const VolumeSlider: React.FC<{
+  value: number;
+  onValueChange: (value: number) => void;
+  colors: any;
+  effectiveTheme: 'light' | 'dark';
+}> = ({value, onValueChange, colors, effectiveTheme}) => {
+  const [sliderValue, setSliderValue] = useState(value);
+  const trackRef = useRef<View>(null);
+  const [trackLayout, setTrackLayout] = useState({x: 0, width: 0});
+
+  useEffect(() => {
+    setSliderValue(value);
+  }, [value]);
+
+  const measureTrack = (callback: (x: number, width: number) => void) => {
+    if (trackRef.current) {
+      trackRef.current.measureInWindow((pageX, pageY, width, height) => {
+        setTrackLayout({x: pageX, width});
+        callback(pageX, width);
+      });
+    }
+  };
+
+  const updateValue = (evt: any) => {
+    const touchX = evt.nativeEvent.pageX;
+    
+    if (trackLayout.width > 0) {
+      const relativeX = touchX - trackLayout.x;
+      const newValue = Math.max(0, Math.min(100, (relativeX / trackLayout.width) * 100));
+      setSliderValue(newValue);
+      onValueChange(newValue);
+    } else {
+      // Measure first if not measured yet
+      measureTrack((pageX, width) => {
+        const relativeX = touchX - pageX;
+        const newValue = Math.max(0, Math.min(100, (relativeX / width) * 100));
+        setSliderValue(newValue);
+        onValueChange(newValue);
+      });
+    }
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: updateValue,
+      onPanResponderMove: updateValue,
+      onPanResponderRelease: () => {},
+    }),
+  ).current;
+
+  const handlePress = (evt: any) => {
+    const touchX = evt.nativeEvent.pageX;
+    measureTrack((pageX, width) => {
+      const relativeX = touchX - pageX;
+      const newValue = Math.max(0, Math.min(100, (relativeX / width) * 100));
+      setSliderValue(newValue);
+      onValueChange(newValue);
+    });
+  };
+
+  const percentage = sliderValue;
+  const thumbPosition = trackLayout.width > 0 
+    ? Math.max(0, Math.min(trackLayout.width - 20, (percentage / 100) * (trackLayout.width - 20))) 
+    : (percentage / 100) * 200; // Fallback estimate
+
+  return (
+    <View style={styles.sliderContainer}>
+      <View 
+        ref={trackRef}
+        onLayout={() => {
+          measureTrack(() => {});
+        }}
+        style={[styles.sliderTrackWrapper, {marginRight: 12}]}
+        {...panResponder.panHandlers}>
+        <View
+          style={[styles.sliderTrack, {backgroundColor: effectiveTheme === 'dark' ? '#3A3A3C' : '#E5E5EA'}]}>
+          <View
+            style={[
+              styles.sliderFill,
+              {
+                width: `${percentage}%`,
+                backgroundColor: colors.primary,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.sliderThumb,
+              {
+                left: thumbPosition,
+                backgroundColor: colors.primary,
+              },
+            ]}
+          />
+        </View>
+      </View>
+      <Text style={[styles.sliderValue, {color: colors.text}]}>
+        {Math.round(sliderValue)}%
+      </Text>
+    </View>
+  );
+};
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const {theme, effectiveTheme, setTheme: setThemeContext, colors} = useTheme();
   const [alarmSoundModalVisible, setAlarmSoundModalVisible] = useState(false);
   const [isSoundPlaying, setIsSoundPlaying] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [unitSystemModalVisible, setUnitSystemModalVisible] = useState(false);
+  const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [themeModalVisible, setThemeModalVisible] = useState(false);
+  const [rodeTypeModalVisible, setRodeTypeModalVisible] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     unitSystem: UnitSystem.METRIC,
     defaultScopeRatio: 5,
     defaultDragThreshold: 30,
     defaultUpdateInterval: 5,
     defaultSmoothingWindow: 5,
+    defaultBowHeight: undefined,
+    defaultSafetyMargin: undefined,
+    defaultChainLength: undefined,
+    defaultTotalRodeAvailable: undefined,
+    defaultRodeType: RodeType.ROPE,
     language: 'en',
     alarmSoundType: AlarmSoundType.DEFAULT,
     alarmVolume: 1.0,
+    theme: 'system',
   });
 
   useEffect(() => {
@@ -47,8 +167,12 @@ export const SettingsScreen: React.FC = () => {
   const loadUserSettings = async () => {
     const loaded = await loadSettings();
     setSettings(loaded);
+    setSettingsLoaded(true);
     if (loaded.language) {
       setLanguage(loaded.language);
+    }
+    if (loaded.theme) {
+      await setThemeContext(loaded.theme);
     }
   };
 
@@ -57,17 +181,44 @@ export const SettingsScreen: React.FC = () => {
     if (settings.language) {
       setLanguage(settings.language);
     }
+    if (settings.theme) {
+      await setThemeContext(settings.theme);
+    }
     Alert.alert(t('success'), t('settingsSaved'));
   };
 
+  // Auto-save settings when they change (but not on initial load)
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    
+    const autoSave = async () => {
+      await saveSettings(settings);
+      if (settings.language) {
+        setLanguage(settings.language);
+      }
+      if (settings.theme) {
+        await setThemeContext(settings.theme);
+      }
+    };
+    
+    autoSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.unitSystem, settings.language, settings.theme, settings.defaultScopeRatio, settings.defaultDragThreshold, settings.defaultUpdateInterval, settings.defaultSmoothingWindow, settings.alarmSoundType, settings.alarmVolume, settingsLoaded]);
+
   const handleTestSound = async () => {
     if (!settings.alarmSoundType) {
-            Alert.alert(t('noSoundSelected'), t('pleaseSelectSound'));
+      Alert.alert(t('noSoundSelected'), t('pleaseSelectSound'));
       return;
     }
 
+    // Cancel any pending timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
     try {
-      // Stop any existing sound first
+      // Always stop any existing sound first
       await stopAlarmSound();
       setIsSoundPlaying(false);
       
@@ -81,6 +232,9 @@ export const SettingsScreen: React.FC = () => {
         settings.alarmVolume || 1.0,
       );
 
+      // Sync state with actual sound state
+      setIsSoundPlaying(isAlarmPlaying());
+
       // Only auto-stop for non-looping sounds
       // For looping sounds (PERSISTENT, SIREN), let user stop manually
       const isLooping = 
@@ -89,84 +243,127 @@ export const SettingsScreen: React.FC = () => {
 
       if (!isLooping) {
         // Stop after 2 seconds for non-looping sounds
-        setTimeout(async () => {
+        timeoutRef.current = setTimeout(async () => {
           await stopAlarmSound();
           setIsSoundPlaying(false);
+          timeoutRef.current = null;
         }, 2000);
       }
     } catch (error) {
       console.error('Error testing alarm sound:', error);
       Alert.alert(t('error'), t('failedToPlaySound'));
       setIsSoundPlaying(false);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
     }
   };
 
   const handleStopSound = async () => {
+    // Cancel any pending timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
     try {
+      // Always try to stop, regardless of state
       await stopAlarmSound();
       // Small delay to ensure sound is stopped
       await new Promise(resolve => setTimeout(resolve, 100));
-      setIsSoundPlaying(false);
+      
+      // Sync state with actual sound state
+      setIsSoundPlaying(isAlarmPlaying());
     } catch (error) {
       console.error('Error stopping alarm sound:', error);
+      // Force state to false even if there's an error
       setIsSoundPlaying(false);
     }
   };
 
+  // Sync state periodically and on mount/unmount
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const actualState = isAlarmPlaying();
+      if (actualState !== isSoundPlaying) {
+        setIsSoundPlaying(actualState);
+      }
+    }, 500); // Check every 500ms
+
+    return () => {
+      clearInterval(interval);
+      // Cleanup timeout on unmount
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [isSoundPlaying]);
+
   return (
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
     <ScrollView 
-      style={styles.container}
-      contentContainerStyle={{paddingBottom: insets.bottom + 16}}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('units')}</Text>
-        <View style={styles.optionRow}>
+      style={styles.scrollView}
+      contentContainerStyle={{paddingBottom: insets.bottom + 100}}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('units')}</Text>
+        <TouchableOpacity
+          style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
+          onPress={() => setUnitSystemModalVisible(true)}
+          activeOpacity={0.7}>
+          <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
+            {settings.unitSystem === UnitSystem.METRIC ? t('metric') : t('imperial')}
+          </Text>
+          <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
+        </TouchableOpacity>
+
+        <Modal
+          visible={unitSystemModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setUnitSystemModalVisible(false)}>
           <TouchableOpacity
-            style={[
-              styles.optionButton,
-              settings.unitSystem === UnitSystem.METRIC && styles.optionSelected,
-            ]}
-            onPress={() =>
-              setSettings(prev => ({...prev, unitSystem: UnitSystem.METRIC}))
-            }>
-            <Text
-              style={[
-                styles.optionText,
-                settings.unitSystem === UnitSystem.METRIC &&
-                  styles.optionTextSelected,
-              ]}>
-              {t('metric')}
-            </Text>
+            style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay}]}
+            activeOpacity={1}
+            onPress={() => setUnitSystemModalVisible(false)}>
+            <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+              <Text style={[styles.modalTitle, {color: colors.text}]}>{t('units')}</Text>
+              {Object.values(UnitSystem).map(unit => (
+                <TouchableOpacity
+                  key={unit}
+                  style={[
+                    styles.modalOption,
+                    {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                    settings.unitSystem === unit && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
+                  ]}
+                  onPress={() => {
+                    setSettings(prev => ({...prev, unitSystem: unit}));
+                    setUnitSystemModalVisible(false);
+                  }}>
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      {color: colors.text},
+                      settings.unitSystem === unit && {color: colors.primary, fontWeight: '600'},
+                    ]}>
+                    {unit === UnitSystem.METRIC ? t('metric') : t('imperial')}
+                  </Text>
+                  {settings.unitSystem === unit && (
+                    <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.optionButton,
-              settings.unitSystem === UnitSystem.IMPERIAL &&
-                styles.optionSelected,
-            ]}
-            onPress={() =>
-              setSettings(prev => ({
-                ...prev,
-                unitSystem: UnitSystem.IMPERIAL,
-              }))
-            }>
-            <Text
-              style={[
-                styles.optionText,
-                settings.unitSystem === UnitSystem.IMPERIAL &&
-                  styles.optionTextSelected,
-              ]}>
-              {t('imperial')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </Modal>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('defaultValues')}</Text>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('defaultValues')}</Text>
 
         <InputField
           label={t('defaultScopeRatio')}
-          value={settings.defaultScopeRatio.toString()}
+          value={(settings.defaultScopeRatio ?? 5).toString()}
           onChangeText={text => {
             const num = parseFloat(text);
             if (!isNaN(num) && num > 0) {
@@ -174,12 +371,12 @@ export const SettingsScreen: React.FC = () => {
             }
           }}
           placeholder="5"
-          tooltip="The ratio of anchor rode length to water depth. For example, a 5:1 ratio means 5 meters of rode for every 1 meter of depth. Higher ratios provide better holding power but require more rode."
+          tooltip={t('defaultScopeRatioTooltip')}
         />
 
         <InputField
           label={t('defaultDragThreshold')}
-          value={settings.defaultDragThreshold.toString()}
+          value={(settings.defaultDragThreshold ?? 30).toString()}
           onChangeText={text => {
             const num = parseFloat(text);
             if (!isNaN(num) && num > 0) {
@@ -188,12 +385,12 @@ export const SettingsScreen: React.FC = () => {
           }}
           unit={settings.unitSystem === UnitSystem.METRIC ? 'm' : 'ft'}
           placeholder="30"
-          tooltip="The maximum distance your boat can move from the anchor point before the alarm triggers. If your boat moves beyond this distance, you'll be alerted that the anchor may be dragging."
+          tooltip={t('defaultDragThresholdTooltip')}
         />
 
         <InputField
           label={t('defaultUpdateInterval')}
-          value={settings.defaultUpdateInterval.toString()}
+          value={(settings.defaultUpdateInterval ?? 5).toString()}
           onChangeText={text => {
             const num = parseFloat(text);
             if (!isNaN(num) && num > 0) {
@@ -202,12 +399,12 @@ export const SettingsScreen: React.FC = () => {
           }}
           unit="seconds"
           placeholder="5"
-          tooltip="How often the app checks your boat's position to detect anchor drag. More frequent updates (lower values) provide faster detection but may use more battery."
+          tooltip={t('defaultUpdateIntervalTooltip')}
         />
 
         <InputField
           label={t('gpsSmoothingWindow')}
-          value={settings.defaultSmoothingWindow.toString()}
+          value={(settings.defaultSmoothingWindow ?? 5).toString()}
           onChangeText={text => {
             const num = parseFloat(text);
             if (!isNaN(num) && num > 0) {
@@ -216,56 +413,293 @@ export const SettingsScreen: React.FC = () => {
           }}
           unit="positions"
           placeholder="5"
-          tooltip="The number of GPS positions averaged together to reduce GPS noise and false alarms. Higher values provide smoother position tracking but may delay alarm detection slightly."
+          tooltip={t('defaultSmoothingWindowTooltip')}
         />
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, {color: colors.textSecondary}]}>
           {t('smoothingHint')}
         </Text>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('language')}</Text>
-        <View style={styles.optionRow}>
-          {(['en', 'fi', 'sv'] as Language[]).map(lang => (
-            <TouchableOpacity
-              key={lang}
-              style={[
-                styles.optionButton,
-                settings.language === lang && styles.optionSelected,
-              ]}
-              onPress={() =>
-                setSettings(prev => ({...prev, language: lang}))
-              }>
-              <Text
-                style={[
-                  styles.optionText,
-                  settings.language === lang && styles.optionTextSelected,
-                ]}>
-                {lang.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+        <InputField
+          label={t('defaultBowHeight')}
+          value={settings.defaultBowHeight?.toString() || ''}
+          onChangeText={text => {
+            if (text === '') {
+              setSettings(prev => ({...prev, defaultBowHeight: undefined}));
+            } else {
+              const num = parseFloat(text);
+              if (!isNaN(num) && num >= 0) {
+                setSettings(prev => ({...prev, defaultBowHeight: num}));
+              }
+            }
+          }}
+          unit={settings.unitSystem === UnitSystem.METRIC ? 'm' : 'ft'}
+          placeholder="0"
+        />
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Alarm Sound</Text>
-        
-        <Text style={styles.label}>Alarm Sound Type</Text>
+        <InputField
+          label={t('defaultSafetyMargin')}
+          value={settings.defaultSafetyMargin?.toString() || ''}
+          onChangeText={text => {
+            if (text === '') {
+              setSettings(prev => ({...prev, defaultSafetyMargin: undefined}));
+            } else {
+              const num = parseFloat(text);
+              if (!isNaN(num) && num >= 0) {
+                setSettings(prev => ({...prev, defaultSafetyMargin: num}));
+              }
+            }
+          }}
+          unit="%"
+          placeholder="10"
+        />
+
+        <InputField
+          label={t('defaultChainLength')}
+          value={settings.defaultChainLength?.toString() || ''}
+          onChangeText={text => {
+            if (text === '') {
+              setSettings(prev => ({...prev, defaultChainLength: undefined}));
+            } else {
+              const num = parseFloat(text);
+              if (!isNaN(num) && num >= 0) {
+                setSettings(prev => ({...prev, defaultChainLength: num}));
+              }
+            }
+          }}
+          unit={settings.unitSystem === UnitSystem.METRIC ? 'm' : 'ft'}
+          placeholder="0"
+        />
+
+        <InputField
+          label={t('defaultTotalRodeAvailable')}
+          value={settings.defaultTotalRodeAvailable?.toString() || ''}
+          onChangeText={text => {
+            if (text === '') {
+              setSettings(prev => ({...prev, defaultTotalRodeAvailable: undefined}));
+            } else {
+              const num = parseFloat(text);
+              if (!isNaN(num) && num >= 0) {
+                setSettings(prev => ({...prev, defaultTotalRodeAvailable: num}));
+              }
+            }
+          }}
+          unit={settings.unitSystem === UnitSystem.METRIC ? 'm' : 'ft'}
+          placeholder="0"
+        />
+
+        <Text style={[styles.label, {color: colors.text}]}>{t('defaultRodeType')}</Text>
         <TouchableOpacity
-          style={styles.dropdownButton}
+          style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
+          onPress={() => setRodeTypeModalVisible(true)}
+          activeOpacity={0.7}>
+          <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
+            {(() => {
+              const type = settings.defaultRodeType || RodeType.ROPE;
+              switch (type) {
+                case RodeType.CHAIN:
+                  return t('chain');
+                case RodeType.ROPE_CHAIN:
+                  return t('ropeChain');
+                case RodeType.ROPE:
+                  return t('rope');
+                default:
+                  return type;
+              }
+            })()}
+          </Text>
+          <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
+        </TouchableOpacity>
+
+        <Modal
+          visible={rodeTypeModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRodeTypeModalVisible(false)}>
+          <TouchableOpacity
+            style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay || 'rgba(0, 0, 0, 0.5)'}]}
+            activeOpacity={1}
+            onPress={() => setRodeTypeModalVisible(false)}>
+            <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+              <Text style={[styles.modalTitle, {color: colors.text}]}>{t('defaultRodeType')}</Text>
+              {Object.values(RodeType).map(type => {
+                const getRodeTypeLabel = (rodeType: RodeType): string => {
+                  switch (rodeType) {
+                    case RodeType.CHAIN:
+                      return t('chain');
+                    case RodeType.ROPE_CHAIN:
+                      return t('ropeChain');
+                    case RodeType.ROPE:
+                      return t('rope');
+                    default:
+                      return rodeType;
+                  }
+                };
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.modalOption,
+                      {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                      (settings.defaultRodeType || RodeType.ROPE) === type && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
+                    ]}
+                    onPress={() => {
+                      setSettings(prev => ({...prev, defaultRodeType: type}));
+                      setRodeTypeModalVisible(false);
+                    }}>
+                    <Text
+                      style={[
+                        styles.modalOptionText,
+                        {color: colors.text},
+                        (settings.defaultRodeType || RodeType.ROPE) === type && {color: colors.primary, fontWeight: '600'},
+                      ]}>
+                      {getRodeTypeLabel(type)}
+                    </Text>
+                    {(settings.defaultRodeType || RodeType.ROPE) === type && (
+                      <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('language')}</Text>
+        <TouchableOpacity
+          style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
+          onPress={() => setLanguageModalVisible(true)}
+          activeOpacity={0.7}>
+          <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
+            {settings.language?.toUpperCase() || 'EN'}
+          </Text>
+          <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
+        </TouchableOpacity>
+
+        <Modal
+          visible={languageModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLanguageModalVisible(false)}>
+          <TouchableOpacity
+            style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay}]}
+            activeOpacity={1}
+            onPress={() => setLanguageModalVisible(false)}>
+            <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+              <Text style={[styles.modalTitle, {color: colors.text}]}>{t('language')}</Text>
+              {(['en', 'fi', 'sv'] as Language[]).map(lang => (
+                <TouchableOpacity
+                  key={lang}
+                  style={[
+                    styles.modalOption,
+                    {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                    settings.language === lang && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
+                  ]}
+                  onPress={() => {
+                    setSettings(prev => ({...prev, language: lang}));
+                    setLanguageModalVisible(false);
+                  }}>
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      {color: colors.text},
+                      settings.language === lang && {color: colors.primary, fontWeight: '600'},
+                    ]}>
+                    {lang.toUpperCase()}
+                  </Text>
+                  {settings.language === lang && (
+                    <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('theme')}</Text>
+        <TouchableOpacity
+          style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
+          onPress={() => setThemeModalVisible(true)}
+          activeOpacity={0.7}>
+          <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
+            {(settings.theme || 'system') === 'system' 
+              ? t('system')
+              : (settings.theme || 'system') === 'light'
+              ? t('light')
+              : t('dark')}
+          </Text>
+          <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
+        </TouchableOpacity>
+        <Text style={[styles.hint, styles.themeHint, {color: colors.textSecondary}]}>
+          {t('themeHint')}
+        </Text>
+
+        <Modal
+          visible={themeModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setThemeModalVisible(false)}>
+          <TouchableOpacity
+            style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay}]}
+            activeOpacity={1}
+            onPress={() => setThemeModalVisible(false)}>
+            <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+              <Text style={[styles.modalTitle, {color: colors.text}]}>{t('theme')}</Text>
+              {(['system', 'light', 'dark'] as Theme[]).map(themeOption => (
+                <TouchableOpacity
+                  key={themeOption}
+                  style={[
+                    styles.modalOption,
+                    {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                    (settings.theme || 'system') === themeOption && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
+                  ]}
+                  onPress={() => {
+                    setSettings(prev => ({...prev, theme: themeOption}));
+                    setThemeModalVisible(false);
+                  }}>
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      {color: colors.text},
+                      (settings.theme || 'system') === themeOption && {color: colors.primary, fontWeight: '600'},
+                    ]}>
+                    {themeOption === 'system' 
+                      ? t('system')
+                      : themeOption === 'light'
+                      ? t('light')
+                      : t('dark')}
+                  </Text>
+                  {(settings.theme || 'system') === themeOption && (
+                    <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.sectionTitle, {color: colors.text}]}>{t('alarmSound')}</Text>
+        
+        <Text style={[styles.label, {color: colors.text}]}>{t('alarmSoundType')}</Text>
+        <TouchableOpacity
+          style={[styles.dropdownButton, {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : colors.inputBackground, borderColor: colors.border}]}
           onPress={() => setAlarmSoundModalVisible(true)}
           activeOpacity={0.7}>
-          <Text style={styles.dropdownButtonText}>
+          <Text style={[styles.dropdownButtonText, {color: colors.text}]}>
             {settings.alarmSoundType
               ? settings.alarmSoundType.charAt(0).toUpperCase() +
                 settings.alarmSoundType.slice(1)
-              : 'Select sound type'}
+              : t('selectSoundType')}
           </Text>
-          <Text style={styles.dropdownArrow}>▼</Text>
+          <Text style={[styles.dropdownArrow, {color: colors.textSecondary}]}>▼</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>
-          Default: Standard alert. Loud: Higher volume. Persistent: Looping alarm. Siren: Continuous alert.
+        <Text style={[styles.hint, styles.alarmSoundHint, {color: colors.textSecondary}]}>
+          {t('alarmSoundHint')}
         </Text>
 
         <Modal
@@ -274,17 +708,18 @@ export const SettingsScreen: React.FC = () => {
           animationType="fade"
           onRequestClose={() => setAlarmSoundModalVisible(false)}>
           <TouchableOpacity
-            style={styles.modalOverlay}
+            style={[styles.modalOverlay, {backgroundColor: colors.modalOverlay}]}
             activeOpacity={1}
             onPress={() => setAlarmSoundModalVisible(false)}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Select Alarm Sound Type</Text>
+            <View style={[styles.modalContent, {backgroundColor: effectiveTheme === 'dark' ? '#1C1C1E' : colors.surface}]}>
+              <Text style={[styles.modalTitle, {color: colors.text}]}>{t('selectAlarmSoundType')}</Text>
               {Object.values(AlarmSoundType).map(soundType => (
                 <TouchableOpacity
                   key={soundType}
                   style={[
                     styles.modalOption,
-                    settings.alarmSoundType === soundType && styles.modalOptionSelected,
+                    {backgroundColor: effectiveTheme === 'dark' ? '#2C2C2C' : '#f8f9fa'},
+                    settings.alarmSoundType === soundType && {backgroundColor: effectiveTheme === 'dark' ? 'rgba(10, 132, 255, 0.2)' : '#e7f3ff', borderColor: colors.primary, borderWidth: 1},
                   ]}
                   onPress={() => {
                     setSettings(prev => ({...prev, alarmSoundType: soundType}));
@@ -293,12 +728,13 @@ export const SettingsScreen: React.FC = () => {
                   <Text
                     style={[
                       styles.modalOptionText,
-                      settings.alarmSoundType === soundType && styles.modalOptionTextSelected,
+                      {color: colors.text},
+                      settings.alarmSoundType === soundType && {color: colors.primary, fontWeight: '600'},
                     ]}>
                     {soundType.charAt(0).toUpperCase() + soundType.slice(1)}
                   </Text>
                   {settings.alarmSoundType === soundType && (
-                    <Text style={styles.modalOptionCheck}>✓</Text>
+                    <Text style={[styles.modalOptionCheck, {color: colors.primary}]}>✓</Text>
                   )}
                 </TouchableOpacity>
               ))}
@@ -306,78 +742,79 @@ export const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
         </Modal>
 
-        <InputField
-          label={t('alarmVolume')}
-          value={((settings.alarmVolume || 1.0) * 100).toFixed(0)}
-          onChangeText={text => {
-            const num = parseFloat(text);
-            if (!isNaN(num) && num >= 0 && num <= 100) {
-              setSettings(prev => ({...prev, alarmVolume: num / 100}));
-            }
+        <Text style={[styles.label, {color: colors.text}]}>{t('alarmVolume')}</Text>
+        <VolumeSlider
+          value={(settings.alarmVolume || 1.0) * 100}
+          onValueChange={(value) => {
+            setSettings(prev => ({...prev, alarmVolume: value / 100}));
           }}
-          unit="%"
-          placeholder="100"
-          tooltip="The volume level for anchor drag alarm sounds. Set to 0% to disable sound (vibration only), or 100% for maximum volume."
+          colors={colors}
+          effectiveTheme={effectiveTheme}
         />
-        <Text style={styles.hint}>
-          Volume level for alarm sounds (0-100%)
+        <Text style={[styles.hint, {color: colors.textSecondary}]}>
+          {t('volumeLevelHint')}
         </Text>
 
         <View style={styles.testButtonContainer}>
           <TouchableOpacity
             style={[
               styles.testButton,
-              (!settings.alarmSoundType || isSoundPlaying) && styles.testButtonDisabled,
+              {backgroundColor: colors.primary},
+              (!settings.alarmSoundType || isSoundPlaying) && {backgroundColor: colors.buttonDisabled, opacity: 0.6},
             ]}
             onPress={handleTestSound}
             activeOpacity={0.7}
             disabled={!settings.alarmSoundType || isSoundPlaying}>
-            <Text style={[styles.testButtonText, (!settings.alarmSoundType || isSoundPlaying) && styles.testButtonTextDisabled]}>
-              🔊 Test Sound
+            <Text style={[styles.testButtonText, {color: colors.buttonText}, (!settings.alarmSoundType || isSoundPlaying) && {color: colors.buttonDisabledText}]}>
+              🔊 {t('testSound')}
             </Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[
               styles.stopButton,
-              !isSoundPlaying && styles.stopButtonDisabled,
+              {backgroundColor: colors.error},
+              // Always show enabled, but slightly dimmed if not playing
+              !isSoundPlaying && {opacity: 0.7},
             ]}
             onPress={handleStopSound}
             activeOpacity={0.7}
-            disabled={!isSoundPlaying}>
-            <Text style={[styles.stopButtonText, !isSoundPlaying && styles.stopButtonTextDisabled]}>
-              ⏹️ Stop Sound
+            // Always enabled - can stop at any time
+            disabled={false}>
+            <Text style={[styles.stopButtonText, {color: colors.buttonText}]}>
+              ⏹️ {t('stopSound')}
             </Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.hint}>
-          Tap to play the selected alarm sound. Use Stop to end looping sounds.
+        <Text style={[styles.hint, styles.alarmSoundHint, {color: colors.textSecondary}]}>
+          {t('testSoundHint')}
         </Text>
       </View>
 
-      <View style={styles.section}>
+      {/* Floating Save Button */}
+      <View style={[styles.floatingButtonContainer, {paddingBottom: insets.bottom + 16, backgroundColor: colors.background, borderTopColor: colors.border}]}>
         <Button title={t('saveSettings')} onPress={handleSave} fullWidth />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
-          title="How to Anchor Guide"
+          title={t('anchoringTechnique')}
           onPress={() => (navigation as any).navigate('AnchoringTechnique')}
           variant="secondary"
           fullWidth
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
-          title="Anchor Type Guide"
+          title={t('anchorTypeGuide')}
           onPress={() => (navigation as any).navigate('AnchorGuide')}
           variant="secondary"
           fullWidth
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={t('privacyPolicy')}
           onPress={() => (navigation as any).navigate('PrivacyPolicy')}
@@ -386,7 +823,7 @@ export const SettingsScreen: React.FC = () => {
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={t('termsOfService')}
           onPress={() => (navigation as any).navigate('TermsOfService')}
@@ -395,7 +832,7 @@ export const SettingsScreen: React.FC = () => {
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
         <Button
           title={`🚨 ${t('emergencyContacts')}`}
           onPress={() => (navigation as any).navigate('EmergencyContacts')}
@@ -406,30 +843,44 @@ export const SettingsScreen: React.FC = () => {
 
       <SafetyDisclaimer />
 
-      <View style={styles.section}>
-        <Text style={styles.copyright}>
+      <View style={[styles.section, {backgroundColor: colors.surface}]}>
+        <Text style={[styles.copyright, {color: colors.textTertiary}]}>
           {t('copyrightText').replace('{year}', new Date().getFullYear().toString())}
         </Text>
       </View>
     </ScrollView>
+    
+    {/* Safe area background to prevent content showing through */}
+    {insets.bottom > 0 && (
+      <View style={[styles.safeAreaBackground, {height: insets.bottom, backgroundColor: colors.background}]} />
+    )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  safeAreaBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 999,
   },
   section: {
     padding: 16,
-    backgroundColor: '#fff',
     marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    color: '#333',
   },
   optionRow: {
     flexDirection: 'row',
@@ -439,38 +890,74 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderWidth: 2,
-    borderColor: '#ddd',
     borderRadius: 8,
     alignItems: 'center',
   },
-  optionSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#e7f3ff',
-  },
   optionText: {
     fontSize: 16,
-    color: '#666',
-  },
-  optionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
   },
   hint: {
     fontSize: 12,
-    color: '#666',
     marginTop: -12,
     marginBottom: 12,
+  },
+  themeHint: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  alarmSoundHint: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sliderTrackWrapper: {
+    flex: 1,
+    height: 40,
+    justifyContent: 'center',
+  },
+  sliderTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: 2,
+    position: 'relative',
+  },
+  sliderFill: {
+    height: '100%',
+    borderRadius: 2,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  sliderThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    position: 'absolute',
+    top: -8,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  sliderValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    minWidth: 50,
+    textAlign: 'right',
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
     marginTop: 8,
-    color: '#333',
   },
   copyright: {
     fontSize: 11,
-    color: '#999',
     textAlign: 'center',
     fontStyle: 'italic',
     marginTop: 8,
@@ -481,27 +968,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 14,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
-    backgroundColor: '#fff',
     marginBottom: 8,
   },
   dropdownButtonText: {
     fontSize: 16,
-    color: '#333',
   },
   dropdownArrow: {
     fontSize: 12,
-    color: '#666',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     width: '80%',
@@ -510,7 +991,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -521,24 +1001,12 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 8,
     marginBottom: 8,
-    backgroundColor: '#f8f9fa',
-  },
-  modalOptionSelected: {
-    backgroundColor: '#e7f3ff',
-    borderWidth: 1,
-    borderColor: '#007AFF',
   },
   modalOptionText: {
     fontSize: 16,
-    color: '#333',
-  },
-  modalOptionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
   },
   modalOptionCheck: {
     fontSize: 18,
-    color: '#007AFF',
     fontWeight: 'bold',
   },
   testButtonContainer: {
@@ -549,42 +1017,38 @@ const styles = StyleSheet.create({
   testButton: {
     flex: 1,
     padding: 14,
-    backgroundColor: '#007AFF',
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  testButtonDisabled: {
-    backgroundColor: '#e0e0e0',
-    opacity: 0.6,
-  },
   testButtonText: {
     fontSize: 16,
-    color: '#fff',
     fontWeight: '600',
-  },
-  testButtonTextDisabled: {
-    color: '#999',
   },
   stopButton: {
     flex: 1,
     padding: 14,
-    backgroundColor: '#dc3545',
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stopButtonDisabled: {
-    backgroundColor: '#e0e0e0',
-    opacity: 0.6,
-  },
   stopButtonText: {
     fontSize: 16,
-    color: '#fff',
     fontWeight: '600',
   },
-  stopButtonTextDisabled: {
-    color: '#999',
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: -2},
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
 
