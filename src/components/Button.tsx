@@ -1,5 +1,5 @@
 import React from 'react';
-import {TouchableOpacity, Text, StyleSheet, ActivityIndicator} from 'react-native';
+import {TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle} from 'react-native';
 import {useTheme} from '../theme/ThemeContext';
 
 interface ButtonProps {
@@ -9,6 +9,7 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
+  style?: ViewStyle | TextStyle | (ViewStyle | TextStyle)[];
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -18,6 +19,7 @@ export const Button: React.FC<ButtonProps> = ({
   disabled = false,
   loading = false,
   fullWidth = false,
+  style,
 }) => {
   const {colors} = useTheme();
   
@@ -46,6 +48,7 @@ export const Button: React.FC<ButtonProps> = ({
         getButtonStyle(),
         disabled && styles.disabled,
         fullWidth && styles.fullWidth,
+        style,
       ]}
       onPress={onPress}
       disabled={disabled || loading}

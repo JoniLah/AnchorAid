@@ -7,7 +7,7 @@ module.exports = (() => {
   expo: {
     name: 'Anchor Aid',
     slug: 'anchor-aid',
-    version: '0.1.0',
+    version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
     splash: {
@@ -37,7 +37,7 @@ module.exports = (() => {
       versionCode: 2,
       config: {
         googleMaps: {
-          apiKey: process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyCGOrGO_5SNaUVr2xoDtKaajiaqdlyT1dQ',
+          apiKey: process.env.GOOGLE_MAPS_API_KEY,
         },
         googleMobileAdsAppId: 'ca-app-pub-7120303946590068~4575929356',
       },

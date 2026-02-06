@@ -28,6 +28,7 @@ import {loadData, saveData} from '../services/storage';
 import {Platform} from 'react-native';
 import {isOnWater, validatePolygonOnWater} from '../utils/waterDetection';
 import {doPolygonsOverlap, snapPolygonToPolygon} from '../utils/polygonCollision';
+import {logger} from '../utils/logger';
 import {haversineDistance} from '../utils/haversine';
 import {useTheme} from '../theme/ThemeContext';
 
@@ -64,6 +65,7 @@ export const BottomTypeMapScreen: React.FC = () => {
   const [prediction, setPrediction] = useState<BottomTypePrediction | null>(null);
   const [showPredictionPanel, setShowPredictionPanel] = useState(true);
   const [showLegend, setShowLegend] = useState(true);
+  const [showDrawnAreas, setShowDrawnAreas] = useState(true);
   const [heatmapData, setHeatmapData] = useState<Array<{
     latitude: number;
     longitude: number;
@@ -89,20 +91,39 @@ export const BottomTypeMapScreen: React.FC = () => {
   const [isMoveMarkerMode, setIsMoveMarkerMode] = useState(false);
   const [drawingType, setDrawingType] = useState<'polygon' | 'circle'>('polygon');
   const [currentPolygon, setCurrentPolygon] = useState<Array<{id: string; latitude: number; longitude: number}>>([]);
+  const [polygonUpdateKey, setPolygonUpdateKey] = useState(0);
   const [currentCircle, setCurrentCircle] = useState<{center: {latitude: number; longitude: number}; radius: number} | null>(null);
   const [drawnAreas, setDrawnAreas] = useState<DrawnArea[]>([]);
+  const drawnAreasRef = useRef<DrawnArea[]>([]);
   const [selectedBottomType, setSelectedBottomType] = useState<BottomType>(BottomType.SAND);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    drawnAreasRef.current = drawnAreas;
+  }, [drawnAreas]);
   const [showBottomTypePicker, setShowBottomTypePicker] = useState(false);
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
   const [selectedMarkerIndex, setSelectedMarkerIndex] = useState<number | null>(null);
   const [editingArea, setEditingArea] = useState<DrawnArea | null>(null);
   const [isDeletingMarker, setIsDeletingMarker] = useState(false);
   const [isAreaInfoExpanded, setIsAreaInfoExpanded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadCurrentLocation();
     loadStats();
     loadDrawnAreas();
+    
+    // Track ad action when opening bottom type map
+    const trackAdAction = async () => {
+      try {
+        const {showInterstitialAd} = await import('../services/adMob');
+        await showInterstitialAd();
+      } catch (error) {
+        logger.log('Ad not available');
+      }
+    };
+    trackAdAction();
   }, []);
 
   useEffect(() => {
@@ -122,10 +143,10 @@ export const BottomTypeMapScreen: React.FC = () => {
     if (mapRegion && mapReady && mapRef.current) {
       const forceCenter = () => {
         try {
-          console.log('🔄 Forcing map to center on:', mapRegion);
+          logger.log('🔄 Forcing map to center on:', mapRegion);
           mapRef.current?.animateToRegion(mapRegion, 1000);
         } catch (error) {
-          console.error('❌ Error forcing map center:', error);
+          logger.error('❌ Error forcing map center:', error);
         }
       };
 
@@ -163,7 +184,7 @@ export const BottomTypeMapScreen: React.FC = () => {
         throw new Error('Invalid location coordinates');
       }
       
-      console.log('Location loaded successfully:', location.latitude, location.longitude);
+      logger.log('Location loaded successfully:', location.latitude, location.longitude);
       
       const newRegion = {
         latitude: location.latitude,
@@ -171,11 +192,11 @@ export const BottomTypeMapScreen: React.FC = () => {
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       };
-      console.log('Setting mapRegion to:', newRegion);
+      logger.log('Setting mapRegion to:', newRegion);
       setMapRegion(newRegion);
       setCurrentLocation(location);
     } catch (error: any) {
-      console.error('Error loading location:', error);
+      logger.error('Error loading location:', error);
       const errorMessage =
         error?.message || t('failedToGetLocation');
       Alert.alert(t('locationError'), errorMessage);
@@ -187,7 +208,7 @@ export const BottomTypeMapScreen: React.FC = () => {
   const updateMapRegion = (location: Location) => {
     if (location.latitude !== 0 && location.longitude !== 0 && 
         Math.abs(location.latitude) <= 90 && Math.abs(location.longitude) <= 180) {
-      console.log('Updating map region to:', location.latitude, location.longitude);
+      logger.log('Updating map region to:', location.latitude, location.longitude);
       const newRegion = {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -201,7 +222,7 @@ export const BottomTypeMapScreen: React.FC = () => {
           try {
             mapRef.current?.animateToRegion(newRegion, 1000);
           } catch (error) {
-            console.log('Could not animate map:', error);
+            logger.log('Could not animate map:', error);
           }
         }, 100);
       }
@@ -213,7 +234,7 @@ export const BottomTypeMapScreen: React.FC = () => {
       const pred = await predictBottomType(location);
       setPrediction(pred);
     } catch (error) {
-      console.error('Error loading prediction:', error);
+      logger.error('Error loading prediction:', error);
     }
   };
 
@@ -221,9 +242,9 @@ export const BottomTypeMapScreen: React.FC = () => {
     try {
       const data = await getBottomTypeHeatmap(location, 5, 30);
       setHeatmapData(data);
-      console.log('Heatmap loaded:', data.length, 'points');
+      logger.log('Heatmap loaded:', data.length, 'points');
     } catch (error) {
-      console.error('Error loading heatmap:', error);
+      logger.error('Error loading heatmap:', error);
     }
   };
 
@@ -236,17 +257,48 @@ export const BottomTypeMapScreen: React.FC = () => {
   };
 
   const handleMapPress = async (event: any) => {
-    // Don't add points if a marker is selected, being dragged, or being deleted
-    if (selectedMarkerIndex !== null || draggingPointIndex !== null || isDeletingMarker) {
-      // Just clear selection, don't add point
-      if (selectedMarkerIndex !== null && !isDeletingMarker) {
-        setSelectedMarkerIndex(null);
-      }
+    // Don't add points if being dragged or being deleted
+    if (draggingPointIndex !== null || isDeletingMarker) {
       return;
     }
     
     if (isMoveMarkerMode) {
-      // In move marker mode, don't add points - just clear selection
+      // In move marker mode, if a marker is selected, move it to the clicked position
+      if (selectedMarkerIndex !== null && drawingType === 'polygon') {
+        const coordinate = event.nativeEvent.coordinate;
+        setCurrentPolygon(prev => {
+          const updated = [...prev];
+          updated[selectedMarkerIndex] = {
+            ...updated[selectedMarkerIndex],
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+          };
+          return updated;
+        });
+        // Force polygon line re-render
+        setPolygonUpdateKey(prev => prev + 1);
+        // Keep the marker selected after moving
+        return;
+      }
+      // In move marker mode for circle, move the center to the clicked position
+      if (drawingType === 'circle' && currentCircle) {
+        const coordinate = event.nativeEvent.coordinate;
+        setCurrentCircle({
+          ...currentCircle,
+          center: coordinate,
+        });
+        // Keep the marker selected after moving
+        setSelectedMarkerIndex(0);
+        return;
+      }
+      // If no marker selected, just clear selection (don't add new points)
+      setSelectedMarkerIndex(null);
+      return;
+    }
+    
+    // Don't add points if a marker is selected (when not in move marker mode)
+    if (selectedMarkerIndex !== null) {
+      // Just clear selection, don't add point
       setSelectedMarkerIndex(null);
       return;
     }
@@ -279,9 +331,9 @@ export const BottomTypeMapScreen: React.FC = () => {
         timestamp: Date.now(),
       };
       
-      // Check if tap is on an existing area
+      // Check if tap is on an existing area (use ref to avoid stale closure)
       let tappedArea: DrawnArea | null = null;
-      for (const area of drawnAreas) {
+      for (const area of drawnAreasRef.current) {
         if (area.type === 'circle' && area.center) {
           const distance = haversineDistance(tappedLocation, area.center);
           if (distance <= (area.radius || 500)) {
@@ -300,12 +352,14 @@ export const BottomTypeMapScreen: React.FC = () => {
       
       if (tappedArea) {
         // Enter edit mode for this area
-        setEditingArea(tappedArea);
+        // Get the latest area data from drawnAreas to ensure we have updated coordinates
+        const latestArea = drawnAreas.find(a => a.id === tappedArea.id) || tappedArea;
+        setEditingArea(latestArea);
         setIsAreaInfoExpanded(false); // Start collapsed
-        if (tappedArea.type === 'polygon') {
+        if (latestArea.type === 'polygon') {
           // Convert coordinates to points with IDs for editing
-          const pointsWithIds = tappedArea.coordinates.map((coord, idx) => ({
-            id: `point-${tappedArea.id}-${idx}`,
+          const pointsWithIds = latestArea.coordinates.map((coord, idx) => ({
+            id: `point-${latestArea.id}-${idx}-${Date.now()}`,
             latitude: coord.latitude,
             longitude: coord.longitude,
           }));
@@ -314,13 +368,17 @@ export const BottomTypeMapScreen: React.FC = () => {
           setDrawingType('polygon');
         } else {
           setCurrentCircle({
-            center: tappedArea.center!,
-            radius: tappedArea.radius || 500,
+            center: latestArea.center!,
+            radius: latestArea.radius || 500,
           });
           setIsDrawingMode(true);
           setDrawingType('circle');
         }
-        setSelectedBottomType(tappedArea.bottomType);
+        setSelectedBottomType(latestArea.bottomType);
+        // Reset move marker mode
+        setIsMoveMarkerMode(false);
+        setSelectedMarkerIndex(null);
+        setDraggingPointIndex(null);
         return;
       }
       
@@ -351,18 +409,18 @@ export const BottomTypeMapScreen: React.FC = () => {
   };
 
   const handleMarkerDragStart = (e: any, index: number) => {
-    console.log('Drag start:', index);
+    logger.log('Drag start:', index);
     setDraggingPointIndex(index);
     setSelectedMarkerIndex(index);
   };
 
   const handleMarkerDrag = (e: any, index: number) => {
     const coordinate = e.nativeEvent.coordinate;
-    console.log('🔄 Dragging:', index, 'lat:', coordinate.latitude, 'lng:', coordinate.longitude);
+    logger.log('🔄 Dragging:', index, 'lat:', coordinate.latitude, 'lng:', coordinate.longitude);
     
     // Ensure we have valid coordinates
     if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
-      console.warn('Invalid coordinate in drag:', coordinate);
+      logger.warn('Invalid coordinate in drag:', coordinate);
       return;
     }
     
@@ -376,15 +434,17 @@ export const BottomTypeMapScreen: React.FC = () => {
       };
       return updated;
     });
+    // Force polygon line re-render
+    setPolygonUpdateKey(prev => prev + 1);
   };
 
   const handleMarkerDragEnd = (e: any, index: number) => {
     const coordinate = e.nativeEvent.coordinate;
-    console.log('✅ Drag end:', index, 'lat:', coordinate.latitude, 'lng:', coordinate.longitude);
+    logger.log('✅ Drag end:', index, 'lat:', coordinate.latitude, 'lng:', coordinate.longitude);
     
     // Ensure we have valid coordinates
     if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
-      console.warn('Invalid coordinate in drag end:', coordinate);
+      logger.warn('Invalid coordinate in drag end:', coordinate);
       setDraggingPointIndex(null);
       setSelectedMarkerIndex(null);
       return;
@@ -400,6 +460,8 @@ export const BottomTypeMapScreen: React.FC = () => {
       };
       return updated;
     });
+    // Force polygon line re-render after drag ends
+    setPolygonUpdateKey(prev => prev + 1);
     
     // Clear dragging state
     setDraggingPointIndex(null);
@@ -527,26 +589,32 @@ export const BottomTypeMapScreen: React.FC = () => {
   };
 
   const finishDrawing = async () => {
-    if (drawingType === 'circle') {
-      // Handle circle saving
-      if (!currentCircle) {
-        Alert.alert(t('invalidCircle'), t('createCircleFirst'));
-        return;
-      }
-      
-      // Check if center is on water
-      const onWater = await isOnWater(currentCircle.center.latitude, currentCircle.center.longitude);
-      if (!onWater) {
-        Alert.alert(t('landDetected'), t('circleCenterOnLand'));
-        return;
-      }
+    if (isSaving) return; // Prevent multiple clicks
+    setIsSaving(true);
+    
+    try {
+      if (drawingType === 'circle') {
+        // Handle circle saving
+        if (!currentCircle) {
+          setIsSaving(false);
+          Alert.alert(t('invalidCircle'), t('createCircleFirst'));
+          return;
+        }
+        
+        // Check if center is on water
+        const onWater = await isOnWater(currentCircle.center.latitude, currentCircle.center.longitude);
+        if (!onWater) {
+          setIsSaving(false);
+          Alert.alert(t('landDetected'), t('circleCenterOnLand'));
+          return;
+        }
       
       const saveCircleArea = () => {
         const newArea: DrawnArea = {
           id: editingArea?.id || `area-${Date.now()}`,
           coordinates: [], // Empty for circles
           bottomType: selectedBottomType,
-          timestamp: editingArea?.timestamp || Date.now(),
+          timestamp: Date.now(), // Always use fresh timestamp so map key changes and old paint is replaced
           type: 'circle',
           center: currentCircle.center,
           radius: currentCircle.radius,
@@ -557,16 +625,23 @@ export const BottomTypeMapScreen: React.FC = () => {
           const updatedAreas = drawnAreas.filter(area => area.id !== editingArea.id);
           updatedAreas.push(newArea);
           setDrawnAreas(updatedAreas);
+          drawnAreasRef.current = updatedAreas;
           saveDrawnAreas(updatedAreas);
         } else {
           // Add new area
-          setDrawnAreas([...drawnAreas, newArea]);
-          saveDrawnAreas([...drawnAreas, newArea]);
+          const newAreas = [...drawnAreas, newArea];
+          setDrawnAreas(newAreas);
+          drawnAreasRef.current = newAreas;
+          saveDrawnAreas(newAreas);
         }
         
         setIsDrawingMode(false);
+        setIsMoveMarkerMode(false);
         setCurrentCircle(null);
         setEditingArea(null);
+        setSelectedMarkerIndex(null);
+        setDraggingPointIndex(null);
+        setIsSaving(false);
         Alert.alert(t('areaSaved'), t('savedCircle').replace('{type}', getBottomTypeName(selectedBottomType, t)).replace('{radius}', String(Math.round(currentCircle.radius))));
       };
       
@@ -592,9 +667,10 @@ export const BottomTypeMapScreen: React.FC = () => {
       finalPolygon = currentPolygon.filter((_, index) => !validation.landPoints.includes(index));
       
       if (finalPolygon.length < 3) {
+        setIsSaving(false);
         Alert.alert(
-          'Too Many Land Points',
-          'Too many points are on land. Please ensure at least 3 points are on water.',
+          t('tooManyLandPoints'),
+          t('tooManyLandPointsMessage'),
         );
         return;
       }
@@ -626,9 +702,9 @@ export const BottomTypeMapScreen: React.FC = () => {
     // Convert finalPolygon to coordinates for collision detection
     const finalCoordinates = finalPolygon.map(p => ({latitude: p.latitude, longitude: p.longitude}));
     
-    // Check for collisions with existing areas
+    // Check for collisions with existing areas (use ref to avoid stale closure)
     const overlappingAreas: DrawnArea[] = [];
-    for (const area of drawnAreas) {
+    for (const area of drawnAreasRef.current) {
       if (area.id === editingArea?.id) continue; // Skip the area being edited
       
       if (area.type === 'polygon' && doPolygonsOverlap(finalCoordinates, area.coordinates)) {
@@ -650,7 +726,7 @@ export const BottomTypeMapScreen: React.FC = () => {
         id: editingArea?.id || `area-${Date.now()}`,
         coordinates: coordinatesToSave,
         bottomType: selectedBottomType,
-        timestamp: editingArea?.timestamp || Date.now(),
+        timestamp: Date.now(), // Always use fresh timestamp so map key changes and old paint is replaced
         type: 'polygon',
       };
       
@@ -659,16 +735,23 @@ export const BottomTypeMapScreen: React.FC = () => {
         const updatedAreas = drawnAreas.filter(area => area.id !== editingArea.id);
         updatedAreas.push(newArea);
         setDrawnAreas(updatedAreas);
+        drawnAreasRef.current = updatedAreas;
         saveDrawnAreas(updatedAreas);
       } else {
         // Add new area
-        setDrawnAreas([...drawnAreas, newArea]);
-        saveDrawnAreas([...drawnAreas, newArea]);
+        const newAreas = [...drawnAreas, newArea];
+        setDrawnAreas(newAreas);
+        drawnAreasRef.current = newAreas;
+        saveDrawnAreas(newAreas);
       }
       
+      setIsSaving(false);
       setIsDrawingMode(false);
+      setIsMoveMarkerMode(false);
       setCurrentPolygon([]);
       setEditingArea(null);
+      setSelectedMarkerIndex(null);
+      setDraggingPointIndex(null);
       Alert.alert(t('areaSaved'), t('savedArea').replace('{type}', getBottomTypeName(selectedBottomType, t)).replace('{count}', String(coordinatesToSave.length)));
     };
     
@@ -684,7 +767,9 @@ export const BottomTypeMapScreen: React.FC = () => {
           {
             text: t('cancel'),
             style: 'cancel',
-            onPress: () => {},
+            onPress: () => {
+              setIsSaving(false);
+            },
           },
           {
             text: t('snapToBorder'),
@@ -706,15 +791,21 @@ export const BottomTypeMapScreen: React.FC = () => {
                 area => !overlappingAreas.some(overlap => overlap.id === area.id)
               );
               setDrawnAreas(remainingAreas);
+              drawnAreasRef.current = remainingAreas;
               saveDrawnAreas(remainingAreas);
               savePolygonArea();
             },
           },
         ],
-        {cancelable: true},
+        {cancelable: true, onDismiss: () => setIsSaving(false)},
       );
-    } else {
-      savePolygonArea();
+      } else {
+        savePolygonArea();
+      }
+    } catch (error) {
+      logger.error('Error saving area:', error);
+      setIsSaving(false);
+      Alert.alert(t('error'), 'Failed to save area. Please try again.');
     }
   };
 
@@ -722,7 +813,7 @@ export const BottomTypeMapScreen: React.FC = () => {
     try {
       await saveData('drawnBottomTypeAreas', areas);
     } catch (error) {
-      console.error('Error saving drawn areas:', error);
+      logger.error('Error saving drawn areas:', error);
     }
   };
 
@@ -736,15 +827,17 @@ export const BottomTypeMapScreen: React.FC = () => {
           type: area.type || 'polygon', // Default to polygon for old data
         }));
         setDrawnAreas(normalizedAreas);
+        drawnAreasRef.current = normalizedAreas;
       }
     } catch (error) {
-      console.error('Error loading drawn areas:', error);
+      logger.error('Error loading drawn areas:', error);
     }
   };
 
   const deleteArea = (id: string) => {
     const updatedAreas = drawnAreas.filter(area => area.id !== id);
     setDrawnAreas(updatedAreas);
+    drawnAreasRef.current = updatedAreas;
     saveDrawnAreas(updatedAreas);
   };
 
@@ -756,7 +849,7 @@ export const BottomTypeMapScreen: React.FC = () => {
 
     Alert.alert(
       t('clearAllMappings'),
-      t('deleteAllMappingsConfirm').replace('{count}', String(drawnAreas.length)).replace('{plural}', drawnAreas.length > 1 ? 's' : ''),
+      t('clearMappingsConfirm'),
       [
         {
           text: t('cancel'),
@@ -767,6 +860,7 @@ export const BottomTypeMapScreen: React.FC = () => {
           style: 'destructive',
           onPress: () => {
             setDrawnAreas([]);
+            drawnAreasRef.current = [];
             saveDrawnAreas([]);
             Alert.alert(t('mappingsCleared'), t('allMappingsRemoved'));
           },
@@ -798,7 +892,7 @@ export const BottomTypeMapScreen: React.FC = () => {
         {prediction && (
           <TouchableOpacity
             style={styles.toggleItem}
-            onPress={() => setShowPredictionPanel(!showPredictionPanel)}
+            onPress={() => setShowPredictionPanel(prev => !prev)}
             activeOpacity={0.7}>
             <Ionicons
               name={showPredictionPanel ? 'eye-off' : 'eye'}
@@ -812,7 +906,7 @@ export const BottomTypeMapScreen: React.FC = () => {
         )}
         <TouchableOpacity
           style={styles.toggleItem}
-          onPress={() => setShowLegend(!showLegend)}
+          onPress={() => setShowLegend(prev => !prev)}
           activeOpacity={0.7}>
           <Ionicons
             name={showLegend ? 'eye-off' : 'eye'}
@@ -823,6 +917,21 @@ export const BottomTypeMapScreen: React.FC = () => {
             {t('bottomTypes')}
           </Text>
         </TouchableOpacity>
+        {drawnAreas.length > 0 && (
+          <TouchableOpacity
+            style={styles.toggleItem}
+            onPress={() => setShowDrawnAreas(prev => !prev)}
+            activeOpacity={0.7}>
+            <Ionicons
+              name={showDrawnAreas ? 'eye-off' : 'eye'}
+              size={18}
+              color={colors.primary}
+            />
+            <Text style={[styles.toggleLabel, {color: colors.text}]}>
+              {t('drawnAreas')}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Prediction Info Panel */}
@@ -1015,29 +1124,54 @@ export const BottomTypeMapScreen: React.FC = () => {
           <View style={styles.drawingControls}>
             {isMoveMarkerMode ? (
               <>
-                <Button
-                  title={t('backToDrawing')}
-                  onPress={cancelMoveMarkerMode}
-                  variant="secondary"
-                  style={styles.drawingButton}
-                />
-                {selectedMarkerIndex !== null && drawingType === 'polygon' && currentPolygon.length > 3 && (
-                  <Button
-                    title={t('deleteMarker')}
-                    onPress={(e) => {
-                      e?.stopPropagation?.();
-                      deleteSelectedMarker();
-                    }}
-                    variant="danger"
-                    style={styles.drawingButton}
-                  />
+                {editingArea ? (
+                  <>
+                    <Button
+                      title={t('save')}
+                      onPress={finishDrawing}
+                      variant="primary"
+                      style={styles.drawingButton}
+                      disabled={drawingType === 'polygon' ? currentPolygon.length < 3 : !currentCircle}
+                      loading={isSaving}
+                    />
+                    <Button
+                      title={t('cancel')}
+                      onPress={cancelDrawing}
+                      variant="secondary"
+                      style={styles.drawingButton}
+                      disabled={isSaving}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      title={t('backToDrawing')}
+                      onPress={cancelMoveMarkerMode}
+                      variant="secondary"
+                      style={styles.drawingButton}
+                      disabled={isSaving}
+                    />
+                    {selectedMarkerIndex !== null && drawingType === 'polygon' && currentPolygon.length > 3 && (
+                      <Button
+                        title={t('deleteMarker')}
+                        onPress={(e) => {
+                          e?.stopPropagation?.();
+                          deleteSelectedMarker();
+                        }}
+                        variant="danger"
+                        style={styles.drawingButton}
+                        disabled={isSaving}
+                      />
+                    )}
+                    <Button
+                      title={t('cancel')}
+                      onPress={cancelDrawing}
+                      variant="secondary"
+                      style={styles.drawingButton}
+                      disabled={isSaving}
+                    />
+                  </>
                 )}
-                <Button
-                  title={t('cancel')}
-                  onPress={cancelDrawing}
-                  variant="secondary"
-                  style={styles.drawingButton}
-                />
               </>
             ) : (
               <>
@@ -1046,21 +1180,24 @@ export const BottomTypeMapScreen: React.FC = () => {
                   onPress={cancelDrawing}
                   variant="secondary"
                   style={styles.drawingButton}
+                  disabled={isSaving}
                 />
                 {drawingType === 'polygon' && currentPolygon.length >= 3 ? (
                   <Button
                     title={t('connectToFinish')}
                     onPress={finishDrawing}
-                    variant="primary"
+                    variant="danger"
                     style={styles.drawingButton}
+                    loading={isSaving}
                   />
                 ) : (
                   <Button
                     title={t('finish')}
                     onPress={finishDrawing}
                     variant="primary"
-                    style={styles.drawingButton}
+                    style={[styles.drawingButton, {backgroundColor: '#4CAF50'}]}
                     disabled={drawingType === 'polygon' ? currentPolygon.length < 3 : !currentCircle}
+                    loading={isSaving}
                   />
                 )}
               </>
@@ -1082,14 +1219,14 @@ export const BottomTypeMapScreen: React.FC = () => {
             onPress={handleMapPress}
             onRegionChangeComplete={handleRegionChangeComplete}
             showsUserLocation={true}
-            showsMyLocationButton={true}
+            showsMyLocationButton={false}
             mapType="standard"
             scrollEnabled={!isMoveMarkerMode && selectedMarkerIndex === null && draggingPointIndex === null}
             zoomEnabled={!isMoveMarkerMode && selectedMarkerIndex === null && draggingPointIndex === null}
             pitchEnabled={false}
             rotateEnabled={false}
             onMapReady={() => {
-              console.log('✅ Map is ready!');
+              logger.log('✅ Map is ready!');
               if (mapRegion) {
                 console.log('📍 Map region:', mapRegion.latitude, mapRegion.longitude);
               }
@@ -1131,11 +1268,13 @@ export const BottomTypeMapScreen: React.FC = () => {
             })}
 
             {/* Drawn areas - polygons and circles */}
-            {drawnAreas.map((area) => {
+            {showDrawnAreas && drawnAreas
+              .filter(area => !editingArea || area.id !== editingArea.id) // Hide area being edited
+              .map((area) => {
               if (area.type === 'circle' && area.center) {
                 return (
                   <Circle
-                    key={area.id}
+                    key={`${area.id}-${area.timestamp}-${showDrawnAreas ? 'visible' : 'hidden'}`}
                     center={area.center}
                     radius={area.radius || 500}
                     fillColor={BOTTOM_TYPE_COLORS[area.bottomType] + '80'} // 50% opacity
@@ -1144,15 +1283,21 @@ export const BottomTypeMapScreen: React.FC = () => {
                     tappable
                     onPress={() => {
                       // Enter edit mode directly without alert
-                      setEditingArea(area);
+                      // Get the latest area data from ref to ensure we have updated coordinates (avoids stale closure)
+                      const latestArea = drawnAreasRef.current.find(a => a.id === area.id) || area;
+                      setEditingArea(latestArea);
                       setIsAreaInfoExpanded(false); // Start collapsed
                       setCurrentCircle({
-                        center: area.center!,
-                        radius: area.radius || 500,
+                        center: latestArea.center!,
+                        radius: latestArea.radius || 500,
                       });
                       setIsDrawingMode(true);
                       setDrawingType('circle');
-                      setSelectedBottomType(area.bottomType);
+                      setSelectedBottomType(latestArea.bottomType);
+                      // Reset move marker mode
+                      setIsMoveMarkerMode(false);
+                      setSelectedMarkerIndex(null);
+                      setDraggingPointIndex(null);
                     }}
                   />
                 );
@@ -1162,7 +1307,7 @@ export const BottomTypeMapScreen: React.FC = () => {
                 
                 return (
                   <Polygon
-                    key={area.id}
+                    key={`${area.id}-${area.timestamp}-${showDrawnAreas ? 'visible' : 'hidden'}`}
                     coordinates={area.coordinates}
                     fillColor={BOTTOM_TYPE_COLORS[area.bottomType] + '80'} // 50% opacity
                     strokeColor={strokeColor}
@@ -1172,28 +1317,36 @@ export const BottomTypeMapScreen: React.FC = () => {
                     tappable
                     onPress={() => {
                       // Enter edit mode directly without alert
-                      setEditingArea(area);
+                      // Get the latest area data from ref to ensure we have updated coordinates (avoids stale closure)
+                      const latestArea = drawnAreasRef.current.find(a => a.id === area.id) || area;
+                      setEditingArea(latestArea);
                       setIsAreaInfoExpanded(false); // Start collapsed
                       // Convert coordinates to points with IDs for editing
-                      const pointsWithIds = area.coordinates.map((coord, idx) => ({
-                        id: `point-${area.id}-${idx}-${Date.now()}`,
+                      const pointsWithIds = latestArea.coordinates.map((coord, idx) => ({
+                        id: `point-${latestArea.id}-${idx}-${Date.now()}`,
                         latitude: coord.latitude,
                         longitude: coord.longitude,
                       }));
                       setCurrentPolygon(pointsWithIds);
                       setIsDrawingMode(true);
                       setDrawingType('polygon');
-                      setSelectedBottomType(area.bottomType);
+                      setSelectedBottomType(latestArea.bottomType);
+                      // Reset move marker mode
+                      setIsMoveMarkerMode(false);
+                      setSelectedMarkerIndex(null);
+                      setDraggingPointIndex(null);
                     }}
                   />
                 );
               }
             })}
 
-            {/* Current polygon being drawn - use Polyline to show only consecutive connections, not closed */}
-            {isDrawingMode && drawingType === 'polygon' && currentPolygon.length > 1 && (
-              <Polyline
+            {/* Filled polygon while editing - shows the area that will be saved */}
+            {showDrawnAreas && isDrawingMode && drawingType === 'polygon' && currentPolygon.length >= 3 && (
+              <Polygon
+                key={`editing-polygon-${polygonUpdateKey}`}
                 coordinates={currentPolygon.map(p => ({latitude: p.latitude, longitude: p.longitude}))}
+                fillColor={BOTTOM_TYPE_COLORS[selectedBottomType] + '80'} // 50% opacity
                 strokeColor={BOTTOM_TYPE_COLORS[selectedBottomType]}
                 strokeWidth={3}
                 lineCap="round"
@@ -1202,9 +1355,24 @@ export const BottomTypeMapScreen: React.FC = () => {
               />
             )}
             
-            {/* Show closing line from last to first point when there are at least 3 points */}
+            {/* Current polygon being drawn - use Polyline to show only consecutive connections, not closed */}
+            {isDrawingMode && drawingType === 'polygon' && currentPolygon.length > 1 && currentPolygon.length < 3 && (
+              <Polyline
+                key={`polygon-line-${polygonUpdateKey}`}
+                coordinates={currentPolygon.map(p => ({latitude: p.latitude, longitude: p.longitude}))}
+                strokeColor={BOTTOM_TYPE_COLORS[selectedBottomType]}
+                strokeWidth={3}
+                lineCap="round"
+                lineJoin="round"
+                tappable={false}
+                tracksViewChanges={true}
+              />
+            )}
+            
+            {/* Show closing line from last to first point when there are at least 3 points (only when not showing filled polygon) */}
             {isDrawingMode && drawingType === 'polygon' && currentPolygon.length >= 3 && !isMoveMarkerMode && (
               <Polyline
+                key={`polygon-close-${polygonUpdateKey}`}
                 coordinates={[
                   currentPolygon[currentPolygon.length - 1],
                   currentPolygon[0],
@@ -1214,11 +1382,12 @@ export const BottomTypeMapScreen: React.FC = () => {
                 lineDashPattern={[5, 5]}
                 lineCap="round"
                 tappable={false}
+                tracksViewChanges={true}
               />
             )}
 
             {/* Current circle being drawn */}
-            {isDrawingMode && drawingType === 'circle' && currentCircle && (
+            {showDrawnAreas && isDrawingMode && drawingType === 'circle' && currentCircle && (
               <Circle
                 center={currentCircle.center}
                 radius={currentCircle.radius}
@@ -1231,7 +1400,8 @@ export const BottomTypeMapScreen: React.FC = () => {
             {/* Current polygon points as markers - only show in polygon mode */}
             {(isDrawingMode || isMoveMarkerMode) && drawingType === 'polygon' && currentPolygon.map((point, index) => {
               // Use unique ID as key for stable rendering - this ensures React properly tracks markers
-              const markerKey = point.id || `polygon-point-${index}`;
+              // Include coordinates in key to force re-render when position changes
+              const markerKey = `${point.id || `polygon-point-${index}`}-${point.latitude}-${point.longitude}-${polygonUpdateKey}`;
               const isSelected = selectedMarkerIndex === index;
               const isDragging = draggingPointIndex === index;
               const isLatestPoint = !isMoveMarkerMode && index === currentPolygon.length - 1; // Latest point when drawing
@@ -1252,8 +1422,8 @@ export const BottomTypeMapScreen: React.FC = () => {
                     longitude: point.longitude,
                   }}
                   pinColor={pinColor}
-                  draggable={isMoveMarkerMode && isSelected}
-                  tracksViewChanges={isDragging}
+                  draggable={isSelected || isDragging}
+                  tracksViewChanges={true}
                   onPress={(e) => {
                     e.stopPropagation?.();
                     handleMarkerPress(e, index);
@@ -1377,7 +1547,7 @@ export const BottomTypeMapScreen: React.FC = () => {
                 onPress={loadCurrentLocation}
                 activeOpacity={0.7}>
                 <View style={[styles.iconButtonCircle, {backgroundColor: '#6C757D'}]}>
-                  <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                  <Ionicons name="locate" size={20} color="#FFFFFF" />
                 </View>
               </TouchableOpacity>
             </View>

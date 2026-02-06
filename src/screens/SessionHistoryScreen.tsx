@@ -305,11 +305,18 @@ export const SessionHistoryScreen: React.FC = () => {
                 )}
                 <TouchableOpacity
                   style={styles.viewButton}
-                  onPress={() =>
+                  onPress={async () => {
+                    // Track ad action when viewing saved session
+                    try {
+                      const {showInterstitialAd} = await import('../services/adMob');
+                      await showInterstitialAd();
+                    } catch (error) {
+                      console.log('Ad not available, continuing navigation');
+                    }
                     (navigation as any).navigate('AnchoringSession', {
                       sessionId: session.id,
-                    })
-                  }
+                    });
+                  }}
                   activeOpacity={0.7}>
                   <Text style={styles.viewButtonText}>{t('viewDetails')} →</Text>
                 </TouchableOpacity>

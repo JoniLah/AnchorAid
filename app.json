@@ -2,7 +2,7 @@
   "expo": {
     "name": "Anchor Aid",
     "slug": "anchor-aid",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -28,9 +28,6 @@
       },
       "package": "com.feleroid.anchoraid",
       "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyCGOrGO_5SNaUVr2xoDtKaajiaqdlyT1dQ"
-        },
         "googleMobileAdsAppId": "ca-app-pub-7120303946590068~4575929356"
       },
       "permissions": [

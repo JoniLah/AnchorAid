@@ -365,15 +365,31 @@ export const AnchoringSessionScreen: React.FC = () => {
       return;
     }
 
-    // Convert to metric for calculations
-    const depthM =
-      unitSystem === UnitSystem.METRIC
-        ? depthNum
-        : convertLength(depthNum, UnitSystem.IMPERIAL, UnitSystem.METRIC);
-    const bowHeightM =
-      unitSystem === UnitSystem.METRIC
-        ? bowHeightNum
-        : convertLength(bowHeightNum, UnitSystem.IMPERIAL, UnitSystem.METRIC);
+    // Input validation limits
+    const MAX_DEPTH_M = 10000; // 10km max depth
+    const MAX_BOW_HEIGHT_M = 100; // 100m max bow height
+    const MAX_SCOPE_RATIO = 20; // 20:1 max scope ratio
+    
+    const depthM = unitSystem === UnitSystem.METRIC
+      ? depthNum
+      : convertLength(depthNum, UnitSystem.IMPERIAL, UnitSystem.METRIC);
+    const bowHeightM = unitSystem === UnitSystem.METRIC
+      ? bowHeightNum
+      : convertLength(bowHeightNum, UnitSystem.IMPERIAL, UnitSystem.METRIC);
+    
+    if (depthM > MAX_DEPTH_M) {
+      Alert.alert(t('error'), `Depth cannot exceed ${formatLength(MAX_DEPTH_M, unitSystem)}.`);
+      return;
+    }
+    if (bowHeightM > MAX_BOW_HEIGHT_M) {
+      Alert.alert(t('error'), `Bow height cannot exceed ${formatLength(MAX_BOW_HEIGHT_M, unitSystem)}.`);
+      return;
+    }
+    if (scopeRatioNum > MAX_SCOPE_RATIO) {
+      Alert.alert(t('error'), `Scope ratio cannot exceed ${MAX_SCOPE_RATIO}:1.`);
+      return;
+    }
+
 
     const chainLengthM = chainLength
       ? unitSystem === UnitSystem.METRIC
@@ -479,6 +495,32 @@ export const AnchoringSessionScreen: React.FC = () => {
 
     const windNum = parseFloat(windSpeed);
     const gustNum = gustSpeed ? parseFloat(gustSpeed) : undefined;
+    
+    // Input validation limits
+    const MAX_WIND_SPEED_KMH = 200; // 200 km/h max wind speed
+    const MAX_WIND_SPEED_KNOTS = 108; // ~108 knots max
+    
+    const maxWindSpeed = unitSystem === UnitSystem.METRIC ? MAX_WIND_SPEED_KMH : MAX_WIND_SPEED_KNOTS;
+    
+    if (isNaN(windNum) || windNum < 0) {
+      Alert.alert(t('error'), t('pleaseEnterWindSpeed'));
+      return;
+    }
+    
+    if (windNum > maxWindSpeed) {
+      Alert.alert(t('error'), `Wind speed cannot exceed ${windNum > 100 ? '200 km/h' : '108 knots'}.`);
+      return;
+    }
+    
+    if (gustNum !== undefined && (isNaN(gustNum) || gustNum < 0 || gustNum < windNum)) {
+      Alert.alert(t('error'), 'Gust speed must be greater than or equal to wind speed.');
+      return;
+    }
+    
+    if (gustNum !== undefined && gustNum > maxWindSpeed * 1.5) {
+      Alert.alert(t('error'), 'Gust speed is unrealistically high.');
+      return;
+    }
     const recommendation = getRecommendedScopeRatio(
       windNum,
       gustNum,

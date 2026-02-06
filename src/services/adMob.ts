@@ -1,4 +1,6 @@
 import {Platform} from 'react-native';
+import {loadData, saveData} from './storage';
+import {logger} from '../utils/logger';
 
 // Conditionally import AdMob - may not be available in Expo Go
 let InterstitialAd: any = null;
@@ -11,7 +13,27 @@ try {
   AdEventType = mobileAds.AdEventType;
   TestIds = mobileAds.TestIds;
 } catch (error) {
-  console.warn('react-native-google-mobile-ads not available:', error);
+  logger.warn('react-native-google-mobile-ads not available:', error);
+}
+
+// Ad frequency settings
+const AD_FREQUENCY = 3; // Show ad every 3 actions (after first time)
+const AD_COUNTER_KEY = '@anchor_aid:ad_counter';
+const AD_FIRST_TIME_KEY = '@anchor_aid:ad_first_time_shown';
+
+/**
+ * Reset ad counter (useful for testing or resetting ad frequency)
+ * Sets counter to null and firstTimeShown to false so next action will show ad
+ */
+export async function resetAdCounter(): Promise<void> {
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    await AsyncStorage.removeItem(AD_COUNTER_KEY);
+    await AsyncStorage.removeItem(AD_FIRST_TIME_KEY);
+    logger.log('Ad counter and firstTimeShown reset');
+  } catch (error) {
+    logger.warn('Error resetting ad counter:', error);
+  }
 }
 
 // Get interstitial ad unit ID based on platform
@@ -51,21 +73,70 @@ export async function loadInterstitialAd(): Promise<void> {
     // Preload the ad
     await interstitialAd.load();
     
-    console.log('Interstitial ad loaded');
+    logger.log('Interstitial ad loaded');
   } catch (error) {
-    console.warn('Failed to load interstitial ad:', error);
+    logger.warn('Failed to load interstitial ad:', error);
   }
 }
 
 /**
- * Show interstitial ad if loaded
+ * Check if ad should be shown based on action counter
+ * Returns true if ad should be shown, false otherwise
+ * Shows ad on first action, then every AD_FREQUENCY actions after that
+ */
+async function shouldShowAd(): Promise<boolean> {
+  try {
+    const counter = await loadData<number>(AD_COUNTER_KEY);
+    
+    logger.log('Ad counter check - current counter:', counter);
+    
+    // Show ad on first time (counter doesn't exist yet)
+    if (counter === null || counter === undefined) {
+      logger.log('First time - showing ad, setting counter to', AD_FREQUENCY);
+      // Set counter to AD_FREQUENCY so next ad shows after AD_FREQUENCY actions
+      await saveData(AD_COUNTER_KEY, AD_FREQUENCY);
+      return true;
+    }
+    
+    // Decrement counter (starts at AD_FREQUENCY, counts down to 0)
+    const newCounter = counter - 1;
+    logger.log('Decrementing counter from', counter, 'to', newCounter);
+    
+    // Show ad when counter reaches 0, then reset to AD_FREQUENCY
+    if (newCounter <= 0) {
+      logger.log('Counter reached 0 - showing ad and resetting to', AD_FREQUENCY);
+      await saveData(AD_COUNTER_KEY, AD_FREQUENCY);
+      return true;
+    }
+    
+    // Save updated counter
+    await saveData(AD_COUNTER_KEY, newCounter);
+    logger.log('Ad counter not reached (', newCounter, '> 0), skipping ad');
+    return false;
+  } catch (error) {
+    logger.warn('Error checking ad counter:', error);
+    // On error, show ad to be safe
+    return true;
+  }
+}
+
+/**
+ * Show interstitial ad if loaded and counter threshold reached
  * Returns a promise that resolves when the ad is shown or fails
  */
 export async function showInterstitialAd(): Promise<void> {
   return new Promise(async (resolve) => {
     try {
+      // Check if we should show ad based on counter
+      const shouldShow = await shouldShowAd();
+      if (!shouldShow) {
+        logger.log('Ad counter not reached, skipping ad');
+        resolve();
+        return;
+      }
+      
       if (!InterstitialAd) {
-        console.warn('AdMob not available');
+        logger.warn('AdMob not available');
         resolve();
         return;
       }
@@ -105,7 +176,7 @@ export async function showInterstitialAd(): Promise<void> {
             const unsubscribeClosed = interstitialAd.addAdEventListener(
               AdEventType?.CLOSED || 'closed',
               () => {
-                console.log('Interstitial ad closed');
+                logger.log('Interstitial ad closed');
                 unsubscribeClosed?.();
                 
                 // Reload for next time

@@ -7,22 +7,26 @@ A React Native mobile application that helps boaters anchor safely by calculatin
 ### MVP Features
 
 1. **Anchor Rode / Scope Calculator**
+
    - Calculate recommended rode length based on water depth, bow height, and scope ratio
    - Support for chain, rope+chain, and rope rode types
    - Safety margin calculation
    - Warnings when recommended length exceeds available rode
 
 2. **Wind / Gust Input**
+
    - Manual wind speed and gust speed entry
    - Automatic scope ratio recommendations based on wind conditions
    - Guidance for light, moderate, and strong wind conditions
 
 3. **Swing Radius Estimator**
+
    - Calculate swing radius based on deployed rode length and boat length
    - Visual swing circle on map showing anchor point and current position
    - Real-time distance and bearing calculations
 
 4. **Anchor Drag Alarm (GPS-based)**
+
    - Set anchor point using GPS
    - Configurable drag threshold distance
    - GPS position smoothing to reduce jitter
@@ -30,6 +34,7 @@ A React Native mobile application that helps boaters anchor safely by calculatin
    - GPS accuracy monitoring and warnings
 
 5. **Seabed / Bottom Type**
+
    - Manual selection of bottom type (Sand, Mud, Clay, Grass/Weeds, Rock, Coral, Unknown)
    - Anchoring suitability hints for each bottom type
 
@@ -91,17 +96,37 @@ anchor-aid/
   - For iOS: Xcode and CocoaPods
   - For Android: Android Studio and Android SDK
 
+### Environment Setup
+
+1. **Create a `.env` file** in the project root:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Add your Google Maps API key** to `.env`:
+
+   ```
+   GOOGLE_MAPS_API_KEY=your_actual_api_key_here
+   ```
+
+   Get your API key from: https://console.cloud.google.com/google/maps-apis
+
+   **Important:** Never commit the `.env` file to version control. It's already in `.gitignore`.
+
 ### Initial Project Setup
 
 **Important:** This repository contains the source code and configuration files. To create a runnable React Native project:
 
 1. **Create a new React Native project:**
+
    ```bash
    npx react-native init AnchorAid --version 0.73.0
    cd AnchorAid
    ```
 
 2. **Replace the generated files with this project's files:**
+
    - Copy the entire `src/` folder
    - Copy `package.json`, `tsconfig.json`, `babel.config.js`, `metro.config.js`, `.eslintrc.js`
    - Copy `index.js` and `app.json`
@@ -110,11 +135,13 @@ anchor-aid/
    - Copy `.prettierrc.js` and `jest.config.js`
 
 3. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 4. **iOS setup (if targeting iOS):**
+
    ```bash
    cd ios
    pod install
@@ -122,6 +149,7 @@ anchor-aid/
    ```
 
 5. **Run the app:**
+
    ```bash
    # iOS
    npm run ios
@@ -186,6 +214,68 @@ The location permission is automatically included via the geolocation package. E
 - Set default scope ratio, drag threshold, update interval
 - Adjust GPS smoothing window
 
+## Version Management
+
+The app uses semantic versioning (major.minor.patch). Version is managed in both `app.config.js` and `app.json`.
+
+### EAS Build Version Management
+
+EAS automatically increments `versionCode` (Android) and `buildNumber` (iOS) for each build. The semantic version (`version` field) should be manually bumped before production builds.
+
+### Bumping Version
+
+Use the provided npm scripts to bump the version:
+
+```bash
+# Patch version (1.0.0 -> 1.0.1) - Bug fixes, small changes
+npm run version:patch
+
+# Minor version (1.0.0 -> 1.1.0) - New features, backward compatible
+npm run version:minor
+
+# Major version (1.0.0 -> 2.0.0) - Breaking changes
+npm run version:major
+```
+
+The script automatically updates both `app.config.js` and `app.json`.
+
+### Build Workflow
+
+1. **Development builds** (`eas build --profile development`):
+
+   - Auto-increments versionCode/buildNumber
+   - Version stays the same
+
+2. **Preview builds** (`eas build --profile preview`):
+
+   - Auto-increments versionCode/buildNumber
+   - Bump patch version before building: `npm run version:patch`
+
+3. **Production builds** (`eas build --profile production`):
+   - Auto-increments versionCode/buildNumber
+   - Bump version based on changes:
+     - Bug fixes: `npm run version:patch`
+     - New features: `npm run version:minor`
+     - Breaking changes: `npm run version:major`
+
+Example workflow:
+
+```bash
+# Make your changes
+git add .
+git commit -m "Fix: Resolve anchor drag alarm issue"
+
+# Bump patch version
+npm run version:patch
+
+# Commit version bump
+git add app.config.js app.json
+git commit -m "Bump version to 1.0.1"
+
+# Build for production
+eas build --profile production --platform android
+```
+
 ## Testing
 
 Run unit tests:
@@ -201,6 +291,7 @@ npm run test:watch
 ```
 
 Test coverage includes:
+
 - Unit conversion functions
 - Haversine distance calculations
 - Scope calculations
@@ -212,12 +303,14 @@ Test coverage includes:
 ⚠️ **IMPORTANT SAFETY NOTICE**
 
 This app provides guidance only and does not replace:
+
 - Nautical charts
 - Proper seamanship
 - Official safety equipment
 - Professional navigation advice
 
 Always:
+
 - Use proper navigation tools
 - Monitor conditions continuously
 - Exercise sound judgment
@@ -263,4 +356,3 @@ This is an MVP project. Contributions and feedback are welcome!
 ---
 
 **Built with ⚓ for boaters who value safety and precision.**
-
